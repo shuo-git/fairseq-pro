@@ -11,6 +11,7 @@ Evaluate the perplexity of a trained language model.
 import logging
 import math
 import os
+import sys
 
 import torch
 
@@ -23,9 +24,10 @@ from fairseq import distributed_utils
 
 
 logging.basicConfig(
-    format='%(asctime)s | %(levelname)s | %(name)s | %(message)s',
+    format='%(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
     level=os.environ.get('LOGLEVEL', 'INFO').upper(),
+    stream=sys.stdout,
 )
 logger = logging.getLogger('fairseq_cli.eval_lm')
 
@@ -226,8 +228,12 @@ def main(parsed_args, **unused_kwargs):
                         w = ''
                 if args.output_word_probs:
                     logger.info(
-                        str(int(sample_id)) + " "
-                        + ('\t'.join('{} [{:2f}]'.format(x[0], x[1]) for x in word_prob))
+                        "S-" + str(int(sample_id)) + "\t"
+                        + (' '.join('{}'.format(x[0]) for x in word_prob))
+                    )
+                    logger.info(
+                        "P-" + str(int(sample_id)) + "\t"
+                        + (' '.join('{:.2f}'.format(x[1]) for x in word_prob))
                     )
 
         wps_meter.update(sample['ntokens'])
