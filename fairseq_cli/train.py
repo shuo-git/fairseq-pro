@@ -239,7 +239,11 @@ def validate_and_save(args, trainer, task, epoch_itr, valid_subsets, end_of_epoc
     num_updates = trainer.get_num_updates()
     max_update = args.max_update or math.inf
     do_save = (
-        (end_of_epoch and epoch_itr.epoch % args.save_interval == 0)
+        (
+            end_of_epoch
+            and args.save_interval > 0
+            and epoch_itr.epoch % args.save_interval == 0
+        )
         or num_updates >= max_update
         or (
             args.save_interval_updates > 0
@@ -250,7 +254,10 @@ def validate_and_save(args, trainer, task, epoch_itr, valid_subsets, end_of_epoc
     )
     do_validate = (
         (not end_of_epoch and do_save)  # validate during mid-epoch saves
-        or (end_of_epoch and epoch_itr.epoch % args.validate_interval == 0)
+        or (
+            end_of_epoch
+            and args.validate_interval > 0
+            and epoch_itr.epoch % args.validate_interval == 0)
         or num_updates >= max_update
         or (
             args.validate_interval_updates > 0

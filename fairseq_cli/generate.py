@@ -222,8 +222,7 @@ def _main(args, output_file):
                         sample_id,
                         ' '.join(map(
                             lambda x: '{:.4f}'.format(x),
-                            # convert from base e to base 2
-                            hypo['positional_scores'].div_(math.log(2)).tolist(),
+                            hypo['positional_scores'].tolist(),
                         ))
                     ), file=output_file)
 
