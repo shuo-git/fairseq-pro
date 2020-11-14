@@ -11,6 +11,8 @@ import os
 from fairseq import options
 import numpy as np
 
+import torch
+
 from fairseq import metrics, utils
 from fairseq.data import (
     AppendTokenDataset,
@@ -204,6 +206,8 @@ class TranslationTask(LegacyFairseqTask):
                                  'e.g., \'{"beam": 4, "lenpen": 0.6}\'')
         parser.add_argument('--eval-bleu-print-samples', action='store_true',
                             help='print sample generations during validation')
+        parser.add_argument('--cali-train', action='store_true',
+                            help='employ calibration-aware training')
         # fmt: on
 
     def __init__(self, args, src_dict, tgt_dict):
@@ -277,7 +281,7 @@ class TranslationTask(LegacyFairseqTask):
 
     def build_model(self, args):
         model = super().build_model(args)
-        if getattr(args, 'eval_bleu', False):
+        if getattr(args, 'eval_bleu', False) or getattr(args, 'cali_train', False):
             assert getattr(args, 'eval_bleu_detok', None) is not None, (
                 '--eval-bleu-detok is required if using --eval-bleu; '
                 'try --eval-bleu-detok=moses (or --eval-bleu-detok=space '
@@ -292,6 +296,42 @@ class TranslationTask(LegacyFairseqTask):
             gen_args = json.loads(getattr(args, 'eval_bleu_args', '{}') or '{}')
             self.sequence_generator = self.build_generator([model], Namespace(**gen_args))
         return model
+
+    def train_step(
+        self, sample, model, criterion, optimizer, update_num, ignore_grad=False
+    ):
+        """
+        Do forward and backward, and return the loss as computed by *criterion*
+        for the given *model* and *sample*.
+
+        Args:
+            sample (dict): the mini-batch. The format is defined by the
+                :class:`~fairseq.data.FairseqDataset`.
+            model (~fairseq.models.BaseFairseqModel): the model
+            criterion (~fairseq.criterions.FairseqCriterion): the criterion
+            optimizer (~fairseq.optim.FairseqOptimizer): the optimizer
+            update_num (int): the current update
+            ignore_grad (bool): multiply loss by 0 if this is set to True
+
+        Returns:
+            tuple:
+                - the loss
+                - the sample size, which is used as the denominator for the
+                  gradient
+                - logging outputs to display while training
+        """
+        model.train()
+        model.set_num_updates(update_num)
+        with torch.autograd.profiler.record_function("forward"):
+            if self.args.cali_train:
+                loss, sample_size, logging_output = criterion(model, sample, generator=self.sequence_generator)
+            else:
+                loss, sample_size, logging_output = criterion(model, sample)
+        if ignore_grad:
+            loss *= 0
+        with torch.autograd.profiler.record_function("backward"):
+            optimizer.backward(loss)
+        return loss, sample_size, logging_output
 
     def valid_step(self, sample, model, criterion):
         loss, sample_size, logging_output = super().valid_step(sample, model, criterion)

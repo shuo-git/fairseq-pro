@@ -632,6 +632,14 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                 self.output_projection.weight, mean=0, std=self.output_embed_dim ** -0.5
             )
 
+        self.logits2t = nn.Linear(
+            self.output_embed_dim, 1, bias=False
+        )
+        nn.init.normal_(
+            self.logits2t.weight, mean=self.output_embed_dim ** -1, std=self.output_embed_dim ** -0.5
+        )
+        self.logits2t_act = nn.Sigmoid()
+
     def build_decoder_layer(self, args, no_encoder_attn=False):
         return TransformerDecoderLayer(args, no_encoder_attn)
 
@@ -669,8 +677,11 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             alignment_layer=alignment_layer,
             alignment_heads=alignment_heads,
         )
+        if self.logits2t is not None:
+            temperature = self.logits2t_act(self.logits2t(x))
+        # temperature = 1.0
         if not features_only:
-            x = self.output_layer(x)
+            x = self.output_layer(x) / temperature
         return x, extra
 
     def extract_features(

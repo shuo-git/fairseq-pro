@@ -66,6 +66,11 @@ def main(args):
 
     # Build model and criterion
     model = task.build_model(args)
+    for param in model.parameters():
+        param.requires_grad = False
+    for param in model.decoder.logits2t.parameters():
+        param.requires_grad = True
+
     criterion = task.build_criterion(args)
     logger.info(model)
     logger.info("task: {} ({})".format(args.task, task.__class__.__name__))
