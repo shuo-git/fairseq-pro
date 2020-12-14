@@ -556,6 +556,11 @@ def add_eval_lm_args(parser):
     group.add_argument('--softmax-batch', default=sys.maxsize, type=int, metavar='N',
                        help='if BxT is more than this, will batch the softmax over vocab to this amount of tokens'
                             ' in order to fit into GPU memory')
+    group.add_argument('--retain-dropout', action='store_true',
+                       help='Use dropout at inference time')
+    group.add_argument('--retain-dropout-modules', default=None, nargs='+', type=str,
+                       help='if set, only retain dropout for the specified modules; '
+                            'if not set, then dropout will be retained for all modules')
     # fmt: on
 
 
