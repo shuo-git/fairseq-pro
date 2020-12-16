@@ -248,6 +248,18 @@ def main(args):
                 outprefix = "test{}".format(k) if k > 0 else "test"
                 make_dataset(vocab, testpref, outprefix, lang, num_workers=args.workers)
 
+    def make_all_2(lang, vocab):
+        if args.trainpref2:
+            make_dataset(vocab, args.trainpref2, "train-2", lang, num_workers=args.workers)
+        # if args.validpref2:
+        #     for k, validpref2 in enumerate(args.validpref2.split(",")):
+        #         outprefix = "valid-2{}".format(k) if k > 0 else "valid-2"
+        #         make_dataset(vocab, validpref2, outprefix, lang, num_workers=args.workers)
+        # if args.testpref2:
+        #     for k, testpref2 in enumerate(args.testpref2.split(",")):
+        #         outprefix = "test-2{}".format(k) if k > 0 else "test-2"
+        #         make_dataset(vocab, testpref2, outprefix, lang, num_workers=args.workers)
+
     def make_all_alignments():
         if args.trainpref and os.path.exists(args.trainpref + "." + args.align_suffix):
             make_binary_alignment_dataset(args.trainpref + "." + args.align_suffix, "train.align", num_workers=args.workers)
@@ -259,6 +271,11 @@ def main(args):
     make_all(args.source_lang, src_dict)
     if target:
         make_all(args.target_lang, tgt_dict)
+
+    make_all_2(args.source_lang, src_dict)
+    if target:
+        make_all_2(args.target_lang, tgt_dict)
+
     if args.align_suffix:
         make_all_alignments()
 

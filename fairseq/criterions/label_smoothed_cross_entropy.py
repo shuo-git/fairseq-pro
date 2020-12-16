@@ -53,8 +53,16 @@ class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
         2) the sample size, which is used as the denominator for the gradient
         3) logging outputs to display while training
         """
-        net_output = model(**sample['net_input'])
-        loss, nll_loss = self.compute_loss(model, net_output, sample, reduce=reduce)
+        if 'target2' in sample.keys():
+            net_output = model(**sample['net_input'])
+            loss1, nll_loss1 = self.compute_loss(model, net_output[1], sample, reduce=reduce)
+            loss2, nll_loss2 = self.compute_loss(model, net_output[3], {'target': sample['target2']}, reduce=reduce)
+            loss = net_output[0] * loss1 + net_output[2] * loss2
+            nll_loss = net_output[0] * nll_loss1 + net_output[2] * nll_loss2
+            print("lambda={:.2f}    1-lambda={:.2f}".format(net_output[0], net_output[2]))
+        else:
+            net_output = model(**sample['net_input'])
+            loss, nll_loss = self.compute_loss(model, net_output, sample, reduce=reduce)
         sample_size = sample['target'].size(0) if self.sentence_avg else sample['ntokens']
         logging_output = {
             'loss': loss.data,
