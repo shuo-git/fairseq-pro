@@ -117,7 +117,7 @@ def collate(
             s['target2'].ne(pad_idx).long().sum() for s in samples
         ]).index_select(0, sort_order)
 
-        ntokens += tgt_lengths2.sum().item()
+        # ntokens += tgt_lengths2.sum().item()
 
         if samples[0].get('prev_output_tokens2', None) is not None:
             prev_output_tokens2 = merge('prev_output_tokens2', left_pad=left_pad_target)
