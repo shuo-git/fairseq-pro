@@ -462,6 +462,7 @@ class TransformerEncoder(FairseqEncoder):
             x, encoder_embedding = self.forward_embedding(src_tokens, seg_idx)
             x2, encoder_embedding2 = self.forward_embedding(src_tokens2, seg_idx_2)
             x = torch.cat([x, x2], dim=1)
+            encoder_embedding = torch.cat([encoder_embedding, encoder_embedding2], dim=1)
             src_tokens = torch.cat([src_tokens, src_tokens2], dim=1)
             src_lengths = src_lengths + src_lengths2
         else:
