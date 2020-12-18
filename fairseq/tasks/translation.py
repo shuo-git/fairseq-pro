@@ -322,7 +322,7 @@ class TranslationTask(LegacyFairseqTask):
             max_source_positions=self.args.max_source_positions,
             max_target_positions=self.args.max_target_positions,
             load_alignments=self.args.load_alignments,
-            load_corpus2=self.args.load_corpus2 and split == getattr(self.args, "train_subset", None),
+            load_corpus2=self.args.load_corpus2, # and split == getattr(self.args, "train_subset", None),
             truncate_source=self.args.truncate_source,
             num_buckets=self.args.num_batch_buckets,
             shuffle=(split != 'test'),

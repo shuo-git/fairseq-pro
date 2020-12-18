@@ -272,10 +272,10 @@ def add_preprocess_args(parser):
                        help="comma separated, test file prefixes")
     group.add_argument("--trainpref2", metavar="FP", default=None,
                        help="train file prefix")
-    # group.add_argument("--validpref2", metavar="FP", default=None,
-    #                    help="comma separated, valid file prefixes")
-    # group.add_argument("--testpref2", metavar="FP", default=None,
-    #                    help="comma separated, test file prefixes")
+    group.add_argument("--validpref2", metavar="FP", default=None,
+                       help="comma separated, valid file prefixes")
+    group.add_argument("--testpref2", metavar="FP", default=None,
+                       help="comma separated, test file prefixes")
     group.add_argument("--align-suffix", metavar="FP", default=None,
                        help="alignment file suffix")
     group.add_argument("--destdir", metavar="DIR", default="data-bin",

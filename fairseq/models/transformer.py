@@ -30,6 +30,8 @@ from fairseq.modules import (
 from fairseq.modules.quant_noise import quant_noise as apply_quant_noise_
 from torch import Tensor
 
+import numpy as np
+
 DEFAULT_MAX_SOURCE_POSITIONS = 1024
 DEFAULT_MAX_TARGET_POSITIONS = 1024
 
@@ -229,15 +231,12 @@ class TransformerModel(FairseqEncoderDecoderModel):
                 args, tgt_dict, args.decoder_embed_dim, args.decoder_embed_path
             )
 
-        if args.source_embedding_mixup or args.source_sequence_mixup or \
-                args.target_embedding_mixup or args.target_sequence_mixup:
-            mixup_lambda_buckets = 11
-            embed_segments = SegmentEmbedding(mixup_lambda_buckets, args.encoder_embed_dim)
-        else:
-            embed_segments = None
+        mixup_lambda_buckets = 11
+        embed_segments1 = SegmentEmbedding(mixup_lambda_buckets, args.encoder_embed_dim)
+        embed_segments2 = SegmentEmbedding(mixup_lambda_buckets, args.encoder_embed_dim)
 
-        encoder = cls.build_encoder(args, src_dict, encoder_embed_tokens, embed_segments)
-        decoder = cls.build_decoder(args, tgt_dict, decoder_embed_tokens, embed_segments)
+        encoder = cls.build_encoder(args, src_dict, encoder_embed_tokens, embed_segments1, embed_segments2)
+        decoder = cls.build_decoder(args, tgt_dict, decoder_embed_tokens, embed_segments1, embed_segments2)
 
         return cls(args, encoder, decoder)
 
@@ -254,17 +253,17 @@ class TransformerModel(FairseqEncoderDecoderModel):
         return emb
 
     @classmethod
-    def build_encoder(cls, args, src_dict, embed_tokens, embed_segments):
-        return TransformerEncoder(args, src_dict, embed_tokens, embed_segments)
+    def build_encoder(cls, args, src_dict, embed_tokens, embed_segments1, embed_segments2):
+        return TransformerEncoder(args, src_dict, embed_tokens, embed_segments1, embed_segments2)
 
     @classmethod
-    def build_decoder(cls, args, tgt_dict, embed_tokens, embed_segments):
+    def build_decoder(cls, args, tgt_dict, embed_tokens, embed_segments1, embed_segments2):
         return TransformerDecoder(
             args,
             tgt_dict,
             embed_tokens,
             no_encoder_attn=getattr(args, "no_cross_attention", False),
-            embed_segments=embed_segments
+            embed_segments1=embed_segments1, embed_segments2=embed_segments2
         )
 
     # TorchScript doesn't support optional arguments with variable length (**kwargs).
@@ -286,51 +285,32 @@ class TransformerModel(FairseqEncoderDecoderModel):
         Copied from the base class, but without ``**kwargs``,
         which are not supported by TorchScript.
         """
-        if self.args.source_sequence_mixup and self.training:
-            src_tokens2 = kwargs['src_tokens2']
-            src_lengths2 = kwargs['src_lengths2']
-            mixup_lambda = self.mixup_lambda_dis.sample()[0].item()
-        else:
-            src_tokens2 = None
-            src_lengths2 = None
+        src_tokens2 = kwargs.get('src_tokens2', None)
+        src_lengths2 = kwargs.get('src_lengths2', None)
+        prev_output_tokens2 = kwargs.get('prev_output_tokens2', None)
+        if not self.training or np.random.uniform(0, 1) < 0.5:
             mixup_lambda = 1.0
+        else:
+            mixup_lambda = self.mixup_lambda_dis.sample()[0].item()
+            mixup_lambda = round(mixup_lambda / self.encoder.mixup_lambda_step) * self.encoder.mixup_lambda_step
+
         encoder_out = self.encoder(
             src_tokens, src_lengths=src_lengths, return_all_hiddens=return_all_hiddens,
             src_tokens2=src_tokens2, src_lengths2=src_lengths2, mixup_lambda=mixup_lambda
         )
-        if self.args.target_sequence_mixup and self.training:
-            decoder_out = self.decoder(
-                prev_output_tokens,
-                encoder_out=encoder_out,
-                features_only=features_only,
-                alignment_layer=alignment_layer,
-                alignment_heads=alignment_heads,
-                src_lengths=src_lengths,
-                return_all_hiddens=return_all_hiddens,
-            )
-            prev_output_tokens2 = kwargs['prev_output_tokens2']
-            decoder_out2 = self.decoder(
-                prev_output_tokens2,
-                encoder_out=encoder_out,
-                features_only=features_only,
-                alignment_layer=alignment_layer,
-                alignment_heads=alignment_heads,
-                src_lengths=src_lengths,
-                return_all_hiddens=return_all_hiddens,
-            )
-            mixup_lambda = round(mixup_lambda / self.encoder.mixup_lambda_step) * self.encoder.mixup_lambda_step
-            return (mixup_lambda, decoder_out, 1 - mixup_lambda, decoder_out2)
-        else:
-            decoder_out = self.decoder(
-                prev_output_tokens,
-                encoder_out=encoder_out,
-                features_only=features_only,
-                alignment_layer=alignment_layer,
-                alignment_heads=alignment_heads,
-                src_lengths=src_lengths,
-                return_all_hiddens=return_all_hiddens,
-            )
-            return decoder_out
+
+        decoder_out = self.decoder(
+            prev_output_tokens,
+            encoder_out=encoder_out,
+            features_only=features_only,
+            alignment_layer=alignment_layer,
+            alignment_heads=alignment_heads,
+            src_lengths=src_lengths,
+            return_all_hiddens=return_all_hiddens,
+            prev_output_tokens2=prev_output_tokens2,
+            mixup_lambda=mixup_lambda,
+        )
+        return decoder_out
 
     # Since get_normalized_probs is in the Fairseq Model which is not scriptable,
     # I rewrite the get_normalized_probs from Base Class to call the
@@ -357,7 +337,7 @@ class TransformerEncoder(FairseqEncoder):
         embed_tokens (torch.nn.Embedding): input embedding
     """
 
-    def __init__(self, args, dictionary, embed_tokens, embed_segments=None):
+    def __init__(self, args, dictionary, embed_tokens, embed_segments1=None, embed_segments2=None):
         super().__init__(dictionary)
         self.register_buffer("version", torch.Tensor([3]))
 
@@ -370,10 +350,11 @@ class TransformerEncoder(FairseqEncoder):
 
         self.embed_tokens = embed_tokens
 
-        if embed_segments is not None:
-            self.mixup_lambda_buckets = embed_segments.num_embeddings
+        if embed_segments1 is not None and embed_segments2 is not None:
+            self.mixup_lambda_buckets = embed_segments1.num_embeddings
             self.mixup_lambda_step = 1.0 / (self.mixup_lambda_buckets - 1)
-            self.embed_segments = embed_segments
+            self.embed_segments1 = embed_segments1
+            self.embed_segments2 = embed_segments2
 
         self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
 
@@ -419,13 +400,16 @@ class TransformerEncoder(FairseqEncoder):
     def build_encoder_layer(self, args):
         return TransformerEncoderLayer(args)
 
-    def forward_embedding(self, src_tokens, seg_idx=None):
+    def forward_embedding(self, src_tokens, seg_idx=None, seg_type=1):
         # embed tokens and positions
         x = embed = self.embed_scale * self.embed_tokens(src_tokens)
         if self.embed_positions is not None:
             x = embed + self.embed_positions(src_tokens)
         if seg_idx is not None:
-            x = x + self.embed_segments(torch.LongTensor([seg_idx]).to(device=x.device))
+            if seg_type == 1:
+                x = x + self.embed_segments1(torch.LongTensor([seg_idx]).to(device=x.device))
+            else:
+                x = x + self.embed_segments2(torch.LongTensor([seg_idx]).to(device=x.device))
         if self.layernorm_embedding is not None:
             x = self.layernorm_embedding(x)
         x = self.dropout_module(x)
@@ -434,7 +418,7 @@ class TransformerEncoder(FairseqEncoder):
         return x, embed
 
     def forward(self, src_tokens, src_lengths, return_all_hiddens: bool = False,
-                src_tokens2=None, src_lengths2=None, mixup_lambda=1.0):
+                src_tokens2=None, src_lengths2=None, mixup_lambda=1.0, **kwargs):
         """
         Args:
             src_tokens (LongTensor): tokens in the source language of shape
@@ -456,19 +440,19 @@ class TransformerEncoder(FairseqEncoder):
                   hidden states of shape `(src_len, batch, embed_dim)`.
                   Only populated if *return_all_hiddens* is True.
         """
-        if src_tokens2 is not None:
-            seg_idx = round(mixup_lambda / self.mixup_lambda_step)
-            seg_idx_2 = self.mixup_lambda_buckets - 1 - seg_idx
-            x, encoder_embedding = self.forward_embedding(src_tokens, seg_idx)
-            x2, encoder_embedding2 = self.forward_embedding(src_tokens2, seg_idx_2)
-            x = torch.cat([x, x2], dim=1)
-            encoder_embedding = torch.cat([encoder_embedding, encoder_embedding2], dim=1)
-            src_tokens = torch.cat([src_tokens, src_tokens2], dim=1)
-            src_lengths = src_lengths + src_lengths2
-        else:
-            seg_idx = self.mixup_lambda_buckets - 1
-            x, encoder_embedding = self.forward_embedding(src_tokens, seg_idx)
+        if mixup_lambda == 1.0:
+            src_lengths2 = torch.zeros_like(src_lengths)
+            src_tokens2 = torch.zeros(src_lengths2.shape[0], 1).to(dtype=src_tokens.dtype, device=src_tokens.device) \
+                          + self.dictionary.eos_index
 
+        seg_idx = round(mixup_lambda / self.mixup_lambda_step)
+        seg_idx_2 = self.mixup_lambda_buckets - 1 - seg_idx
+        x, encoder_embedding = self.forward_embedding(src_tokens, seg_idx, seg_type=1)
+        x2, encoder_embedding2 = self.forward_embedding(src_tokens2, seg_idx_2, seg_type=2)
+        x = torch.cat([x, x2], dim=1)
+        encoder_embedding = torch.cat([encoder_embedding, encoder_embedding2], dim=1)
+        src_tokens = torch.cat([src_tokens, src_tokens2], dim=1)
+        src_lengths = src_lengths + src_lengths2
 
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
@@ -598,7 +582,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             (default: False).
     """
 
-    def __init__(self, args, dictionary, embed_tokens, no_encoder_attn=False, embed_segments=None):
+    def __init__(self, args, dictionary, embed_tokens, no_encoder_attn=False, embed_segments1=None, embed_segments2=None):
         self.args = args
         super().__init__(dictionary)
         self.register_buffer("version", torch.Tensor([3]))
@@ -613,10 +597,11 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         self.embed_dim = embed_dim
         self.output_embed_dim = args.decoder_output_dim
 
-        if embed_segments is not None:
-            self.mixup_lambda_buckets = embed_segments.num_embeddings
+        if embed_segments1 is not None and embed_segments2 is not None:
+            self.mixup_lambda_buckets = embed_segments1.num_embeddings
             self.mixup_lambda_step = 1.0 / (self.mixup_lambda_buckets - 1)
-            self.embed_segments = embed_segments
+            self.embed_segments1 = embed_segments1
+            self.embed_segments2 = embed_segments2
 
         self.padding_idx = embed_tokens.padding_idx
         self.max_target_positions = args.max_target_positions
@@ -723,6 +708,8 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         alignment_heads: Optional[int] = None,
         src_lengths: Optional[Any] = None,
         return_all_hiddens: bool = False,
+        prev_output_tokens2=None,
+        mixup_lambda=1.0,
     ):
         """
         Args:
@@ -749,7 +736,20 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         )
         if not features_only:
             x = self.output_layer(x)
-        return x, extra
+
+        if mixup_lambda == 1.0:
+            return x, extra
+        else:
+            x2, extra2 = self.extract_features(
+                prev_output_tokens2,
+                encoder_out=encoder_out,
+                incremental_state=incremental_state,
+                alignment_layer=alignment_layer,
+                alignment_heads=alignment_heads,
+            )
+            if not features_only:
+                x2 = self.output_layer(x2)
+            return (mixup_lambda, (x, extra), 1 - mixup_lambda, (x2, extra2))
 
     def extract_features(
         self,
