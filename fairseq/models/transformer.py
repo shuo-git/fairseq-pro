@@ -93,7 +93,8 @@ class TransformerModel(FairseqEncoderDecoderModel):
         self.supports_align_args = True
 
         from torch.distributions import Beta
-        self.mixup_lambda_dis = Beta(torch.FloatTensor([1]), torch.FloatTensor([1]))
+        self.mixup_alpha = args.mixup_alpha
+        self.mixup_lambda_dis = Beta(torch.FloatTensor([self.mixup_alpha]), torch.FloatTensor([self.mixup_alpha]))
 
     @staticmethod
     def add_args(parser):
@@ -184,6 +185,8 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='mixup target side embeddings')
         parser.add_argument('--target-sequence-mixup', action='store_true',
                             help='mixup target side sequences')
+        parser.add_argument('--mixup-alpha', type=float, metavar='D', default=1,
+                            help='alpha of the Beta distribution')
         # fmt: on
 
     @classmethod
