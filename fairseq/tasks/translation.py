@@ -39,6 +39,7 @@ def load_langpair_dataset(
     combine, dataset_impl, upsample_primary,
     left_pad_source, left_pad_target, max_source_positions,
     max_target_positions, prepend_bos=False, load_alignments=False,
+    load_corpus2=False,
     truncate_source=False, append_source_id=False,
     num_buckets=0,
     shuffle=True,
@@ -51,14 +52,21 @@ def load_langpair_dataset(
     src_datasets = []
     tgt_datasets = []
 
+    src_datasets2 = []
+    tgt_datasets2 = []
+
     for k in itertools.count():
         split_k = split + (str(k) if k > 0 else '')
 
         # infer langcode
         if split_exists(split_k, src, tgt, src, data_path):
             prefix = os.path.join(data_path, '{}.{}-{}.'.format(split_k, src, tgt))
+            if load_corpus2:
+                prefix2 = os.path.join(data_path, '{}-2.{}-{}.'.format(split_k, src, tgt))
         elif split_exists(split_k, tgt, src, src, data_path):
             prefix = os.path.join(data_path, '{}.{}-{}.'.format(split_k, tgt, src))
+            if load_corpus2:
+                prefix2 = os.path.join(data_path, '{}-2.{}-{}.'.format(split_k, tgt, src))
         else:
             if k > 0:
                 break
@@ -66,6 +74,8 @@ def load_langpair_dataset(
                 raise FileNotFoundError('Dataset not found: {} ({})'.format(split, data_path))
 
         src_dataset = data_utils.load_indexed_dataset(prefix + src, src_dict, dataset_impl)
+        if load_corpus2:
+            src_dataset2 = data_utils.load_indexed_dataset(prefix2 + src, src_dict, dataset_impl)
         if truncate_source:
             src_dataset = AppendTokenDataset(
                 TruncateDataset(
@@ -74,11 +84,24 @@ def load_langpair_dataset(
                 ),
                 src_dict.eos(),
             )
+            if load_corpus2:
+                src_dataset2 = AppendTokenDataset(
+                    TruncateDataset(
+                        StripTokenDataset(src_dataset2, src_dict.eos()),
+                        max_source_positions - 1,
+                    ),
+                    src_dict.eos(),
+                )
         src_datasets.append(src_dataset)
-
+        if load_corpus2:
+            src_datasets2.append(src_dataset2)
         tgt_dataset = data_utils.load_indexed_dataset(prefix + tgt, tgt_dict, dataset_impl)
+        if load_corpus2:
+            tgt_dataset2 = data_utils.load_indexed_dataset(prefix2 + tgt, tgt_dict, dataset_impl)
         if tgt_dataset is not None:
             tgt_datasets.append(tgt_dataset)
+        if load_corpus2 and tgt_dataset2 is not None:
+            tgt_datasets2.append(tgt_dataset2)
 
         logger.info('{} {} {}-{} {} examples'.format(
             data_path, split_k, src, tgt, len(src_datasets[-1])
@@ -92,20 +115,34 @@ def load_langpair_dataset(
     if len(src_datasets) == 1:
         src_dataset = src_datasets[0]
         tgt_dataset = tgt_datasets[0] if len(tgt_datasets) > 0 else None
+        if load_corpus2:
+            src_dataset2 = src_datasets2[0]
+            tgt_dataset2 = tgt_datasets2[0] if len(tgt_datasets2) > 0 else None
     else:
         sample_ratios = [1] * len(src_datasets)
         sample_ratios[0] = upsample_primary
         src_dataset = ConcatDataset(src_datasets, sample_ratios)
+        if load_corpus2:
+            src_dataset2 = ConcatDataset(src_datasets2, sample_ratios)
         if len(tgt_datasets) > 0:
             tgt_dataset = ConcatDataset(tgt_datasets, sample_ratios)
         else:
             tgt_dataset = None
+        if load_corpus2:
+            if len(tgt_datasets2) > 0:
+                tgt_dataset2 = ConcatDataset(tgt_datasets2, sample_ratios)
+            else:
+                tgt_dataset2 = None
 
     if prepend_bos:
         assert hasattr(src_dict, "bos_index") and hasattr(tgt_dict, "bos_index")
         src_dataset = PrependTokenDataset(src_dataset, src_dict.bos())
         if tgt_dataset is not None:
             tgt_dataset = PrependTokenDataset(tgt_dataset, tgt_dict.bos())
+        if load_corpus2:
+            src_dataset2 = PrependTokenDataset(src_dataset2, src_dict.bos())
+            if tgt_dataset2 is not None:
+                tgt_dataset2 = PrependTokenDataset(tgt_dataset2, tgt_dict.bos())
 
     eos = None
     if append_source_id:
@@ -113,6 +150,11 @@ def load_langpair_dataset(
         if tgt_dataset is not None:
             tgt_dataset = AppendTokenDataset(tgt_dataset, tgt_dict.index('[{}]'.format(tgt)))
         eos = tgt_dict.index('[{}]'.format(tgt))
+        if load_corpus2:
+            src_dataset2 = AppendTokenDataset(src_dataset2, src_dict.index('[{}]'.format(src)))
+            if tgt_dataset2 is not None:
+                tgt_dataset2 = AppendTokenDataset(tgt_dataset2, tgt_dict.index('[{}]'.format(tgt)))
+            eos = tgt_dict.index('[{}]'.format(tgt))
 
     align_dataset = None
     if load_alignments:
@@ -121,6 +163,16 @@ def load_langpair_dataset(
             align_dataset = data_utils.load_indexed_dataset(align_path, None, dataset_impl)
 
     tgt_dataset_sizes = tgt_dataset.sizes if tgt_dataset is not None else None
+
+    if not load_corpus2:
+        src_dataset2 = None
+        tgt_dataset2 = None
+        src_dataset2_sizes = None
+        tgt_dataset2_sizes = None
+    else:
+        src_dataset2_sizes = src_dataset2.sizes
+        tgt_dataset2_sizes = tgt_dataset2.sizes
+
     return LanguagePairDataset(
         src_dataset, src_dataset.sizes, src_dict,
         tgt_dataset, tgt_dataset_sizes, tgt_dict,
@@ -129,6 +181,8 @@ def load_langpair_dataset(
         align_dataset=align_dataset, eos=eos,
         num_buckets=num_buckets,
         shuffle=shuffle,
+        src2=src_dataset2, src2_sizes=src_dataset2_sizes,
+        tgt2=tgt_dataset2, tgt2_sizes=tgt_dataset2_sizes
     )
 
 
@@ -204,6 +258,8 @@ class TranslationTask(LegacyFairseqTask):
                                  'e.g., \'{"beam": 4, "lenpen": 0.6}\'')
         parser.add_argument('--eval-bleu-print-samples', action='store_true',
                             help='print sample generations during validation')
+        parser.add_argument('--load-corpus2', action='store_true',
+                            help='load another training corpus for mixup')
         # fmt: on
 
     def __init__(self, args, src_dict, tgt_dict):
@@ -265,6 +321,7 @@ class TranslationTask(LegacyFairseqTask):
             max_source_positions=self.args.max_source_positions,
             max_target_positions=self.args.max_target_positions,
             load_alignments=self.args.load_alignments,
+            load_corpus2=self.args.load_corpus2,
             truncate_source=self.args.truncate_source,
             num_buckets=self.args.num_batch_buckets,
             shuffle=(split != 'test'),
