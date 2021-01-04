@@ -253,11 +253,15 @@ class TransformerModel(FairseqEncoderDecoderModel):
         self,
         src_tokens,
         src_lengths,
+        src_tokens2,
+        src_lengths2,
         prev_output_tokens,
+        prev_output_tokens2: Optional[Tensor] = None,
         return_all_hiddens: bool = True,
         features_only: bool = False,
         alignment_layer: Optional[int] = None,
         alignment_heads: Optional[int] = None,
+        inter_type: str = 'add'
     ):
         """
         Run the forward pass for an encoder-decoder model.
@@ -265,8 +269,23 @@ class TransformerModel(FairseqEncoderDecoderModel):
         Copied from the base class, but without ``**kwargs``,
         which are not supported by TorchScript.
         """
-        encoder_out = self.encoder(
-            src_tokens, src_lengths=src_lengths, return_all_hiddens=return_all_hiddens
+        encoder_out1 = self.encoder(
+            src_tokens, src_lengths=src_lengths, return_all_hiddens=return_all_hiddens, seg_idx=0
+        )
+        if inter_type == 'add':
+            seg_idx2 = 0
+        else:
+            seg_idx2 = 1
+        encoder_out2 = self.encoder(
+            src_tokens2, src_lengths=src_lengths2, return_all_hiddens=return_all_hiddens, seg_idx=seg_idx2
+        )
+        encoder_out = EncoderOut(
+            encoder_out=torch.cat([encoder_out1.encoder_out, encoder_out2.encoder_out], dim=0),   # T x B x C
+            encoder_padding_mask=torch.cat([encoder_out1.encoder_padding_mask, encoder_out2.encoder_padding_mask], dim=1),    # B x T
+            encoder_embedding=torch.cat([encoder_out1.encoder_embedding, encoder_out2.encoder_embedding], dim=1), # B x T x C
+            encoder_states=[torch.cat([s1, s2], dim=0) for s1, s2 in zip(encoder_out1.encoder_states, encoder_out2.encoder_states)],    # List[T x B x C]
+            src_tokens=None,
+            src_lengths=None,
         )
         decoder_out = self.decoder(
             prev_output_tokens,
@@ -330,6 +349,8 @@ class TransformerEncoder(FairseqEncoder):
             else None
         )
 
+        self.embed_segments = SegmentEmbedding(2, embed_dim)
+
         if getattr(args, "layernorm_embedding", False):
             self.layernorm_embedding = LayerNorm(embed_dim)
         else:
@@ -361,11 +382,12 @@ class TransformerEncoder(FairseqEncoder):
     def build_encoder_layer(self, args):
         return TransformerEncoderLayer(args)
 
-    def forward_embedding(self, src_tokens):
+    def forward_embedding(self, src_tokens, seg_idx=0):
         # embed tokens and positions
         x = embed = self.embed_scale * self.embed_tokens(src_tokens)
         if self.embed_positions is not None:
             x = embed + self.embed_positions(src_tokens)
+        x = x + self.embed_segments(torch.LongTensor([seg_idx]).to(device=x.device))
         if self.layernorm_embedding is not None:
             x = self.layernorm_embedding(x)
         x = self.dropout_module(x)
@@ -373,7 +395,8 @@ class TransformerEncoder(FairseqEncoder):
             x = self.quant_noise(x)
         return x, embed
 
-    def forward(self, src_tokens, src_lengths, return_all_hiddens: bool = False):
+    def forward(self, src_tokens, src_lengths, return_all_hiddens: bool = False,
+                seg_idx=0):
         """
         Args:
             src_tokens (LongTensor): tokens in the source language of shape
@@ -395,7 +418,7 @@ class TransformerEncoder(FairseqEncoder):
                   hidden states of shape `(src_len, batch, embed_dim)`.
                   Only populated if *return_all_hiddens* is True.
         """
-        x, encoder_embedding = self.forward_embedding(src_tokens)
+        x, encoder_embedding = self.forward_embedding(src_tokens, seg_idx=seg_idx)
 
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
@@ -887,6 +910,12 @@ def Embedding(num_embeddings, embedding_dim, padding_idx):
     m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)
     nn.init.normal_(m.weight, mean=0, std=embedding_dim ** -0.5)
     nn.init.constant_(m.weight[padding_idx], 0)
+    return m
+
+
+def SegmentEmbedding(num_embeddings, embedding_dim):
+    m = nn.Embedding(num_embeddings, embedding_dim)
+    nn.init.normal_(m.weight, mean=0, std=embedding_dim ** -0.5)
     return m
 
 
