@@ -412,15 +412,15 @@ class FairseqTask(object):
             optimizer.backward(loss)
         return loss, sample_size, logging_output
 
-    def valid_step(self, sample, model, criterion):
+    def valid_step(self, sample, model, criterion, inter_type=None):
         model.eval()
         with torch.no_grad():
-            loss, sample_size, logging_output = criterion(model, sample)
+            loss, sample_size, logging_output = criterion(model, sample, inter_type=inter_type)
         return loss, sample_size, logging_output
 
-    def inference_step(self, generator, models, sample, prefix_tokens=None, constraints=None):
+    def inference_step(self, generator, models, sample, prefix_tokens=None, constraints=None, inter_type=None):
         with torch.no_grad():
-            return generator.generate(models, sample, prefix_tokens=prefix_tokens, constraints=constraints)
+            return generator.generate(models, sample, prefix_tokens=prefix_tokens, constraints=constraints, inter_type=inter_type)
 
     def begin_epoch(self, epoch, model):
         """Hook function called before the start of each epoch."""

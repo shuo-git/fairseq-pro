@@ -156,7 +156,7 @@ def _main(args, output_file):
             constraints = sample["constraints"]
 
         gen_timer.start()
-        hypos = task.inference_step(generator, models, sample, prefix_tokens=prefix_tokens, constraints=constraints)
+        hypos = task.inference_step(generator, models, sample, prefix_tokens=prefix_tokens, constraints=constraints, inter_type=task.args.eval_inter_type)
         num_generated_tokens = sum(len(h[0]['tokens']) for h in hypos)
         gen_timer.stop(num_generated_tokens)
 

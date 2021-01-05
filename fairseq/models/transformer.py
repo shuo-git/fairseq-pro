@@ -249,6 +249,17 @@ class TransformerModel(FairseqEncoderDecoderModel):
 
     # TorchScript doesn't support optional arguments with variable length (**kwargs).
     # Current workaround is to add union of all arguments in child classes.
+
+    def cat_2_encoder_outs(self, encoder_out1, encoder_out2):
+        return EncoderOut(
+            encoder_out=torch.cat([encoder_out1.encoder_out, encoder_out2.encoder_out], dim=0),   # T x B x C
+            encoder_padding_mask=torch.cat([encoder_out1.encoder_padding_mask, encoder_out2.encoder_padding_mask], dim=1),    # B x T
+            encoder_embedding=torch.cat([encoder_out1.encoder_embedding, encoder_out2.encoder_embedding], dim=1), # B x T x C
+            encoder_states=[torch.cat([s1, s2], dim=0) for s1, s2 in zip(encoder_out1.encoder_states, encoder_out2.encoder_states)] if encoder_out1.encoder_states is not None and encoder_out2.encoder_states is not None else None,    # List[T x B x C]
+            src_tokens=None,
+            src_lengths=None,
+        )
+
     def forward(
         self,
         src_tokens,
@@ -279,14 +290,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         encoder_out2 = self.encoder(
             src_tokens2, src_lengths=src_lengths2, return_all_hiddens=return_all_hiddens, seg_idx=seg_idx2
         )
-        encoder_out = EncoderOut(
-            encoder_out=torch.cat([encoder_out1.encoder_out, encoder_out2.encoder_out], dim=0),   # T x B x C
-            encoder_padding_mask=torch.cat([encoder_out1.encoder_padding_mask, encoder_out2.encoder_padding_mask], dim=1),    # B x T
-            encoder_embedding=torch.cat([encoder_out1.encoder_embedding, encoder_out2.encoder_embedding], dim=1), # B x T x C
-            encoder_states=[torch.cat([s1, s2], dim=0) for s1, s2 in zip(encoder_out1.encoder_states, encoder_out2.encoder_states)],    # List[T x B x C]
-            src_tokens=None,
-            src_lengths=None,
-        )
+        encoder_out = self.cat_2_encoder_outs(encoder_out1, encoder_out2)
         decoder_out = self.decoder(
             prev_output_tokens,
             encoder_out=encoder_out,

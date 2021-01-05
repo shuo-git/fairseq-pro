@@ -32,11 +32,11 @@ def label_smoothed_nll_loss(lprobs, target, epsilon, ignore_index=None, reduce=T
 @register_criterion('label_smoothed_cross_entropy')
 class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
 
-    def __init__(self, task, sentence_avg, label_smoothing, inter_type):
+    def __init__(self, task, sentence_avg, label_smoothing, train_inter_type):
         super().__init__(task)
         self.sentence_avg = sentence_avg
         self.eps = label_smoothing
-        self.inter_type = inter_type
+        self.train_inter_type = train_inter_type
 
     @staticmethod
     def add_args(parser):
@@ -44,11 +44,11 @@ class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
         # fmt: off
         parser.add_argument('--label-smoothing', default=0., type=float, metavar='D',
                             help='epsilon for label smoothing, 0 means no label smoothing')
-        parser.add_argument('--inter-type', default='add', type=str, metavar='STR',
+        parser.add_argument('--train-inter-type', default='add', type=str, metavar='STR',
                             help='interaction type between two inputs')
         # fmt: on
 
-    def forward(self, model, sample, reduce=True):
+    def forward(self, model, sample, reduce=True, inter_type=None):
         """Compute the loss for the given sample.
 
         Returns a tuple with three elements:
@@ -56,7 +56,9 @@ class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
         2) the sample size, which is used as the denominator for the gradient
         3) logging outputs to display while training
         """
-        net_output = model(**sample['net_input'], inter_type=self.inter_type)
+        if inter_type is None:
+            inter_type = self.train_inter_type
+        net_output = model(**sample['net_input'], inter_type=inter_type)
         loss, nll_loss = self.compute_loss(model, net_output, sample, reduce=reduce)
         sample_size = sample['target'].size(0) if self.sentence_avg else sample['ntokens']
         logging_output = {

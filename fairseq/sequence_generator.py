@@ -171,6 +171,7 @@ class SequenceGenerator(nn.Module):
         prefix_tokens: Optional[Tensor] = None,
         constraints: Optional[Tensor] = None,
         bos_token: Optional[int] = None,
+        inter_type: Optional[str] = None,
     ):
         incremental_states = torch.jit.annotate(
             List[Dict[str, Dict[str, Optional[Tensor]]]],
@@ -185,6 +186,12 @@ class SequenceGenerator(nn.Module):
             src_tokens = net_input['src_tokens']
             # length of the source text being the character length except EndOfSentence and pad
             src_lengths = (src_tokens.ne(self.eos) & src_tokens.ne(self.pad)).long().sum(dim=1)
+            if 'src_tokens2' in net_input:
+                src_tokens2 = net_input['src_tokens2']
+                src_lengths2 = (src_tokens2.ne(self.eos) & src_tokens2.ne(self.pad)).long().sum(dim=1)
+            else:
+                src_tokens2 = None
+                src_lengths2 = None
         elif 'source' in net_input:
             src_tokens = net_input['source']
             src_lengths = (
@@ -197,7 +204,10 @@ class SequenceGenerator(nn.Module):
 
         # bsz: total number of sentences in beam
         # Note that src_tokens may have more than 2 dimenions (i.e. audio features)
-        bsz, src_len = src_tokens.size()[:2]
+        if src_tokens2 is not None:
+            bsz, src_len = torch.cat([src_tokens, src_tokens2], dim=1).size()[:2]
+        else:
+            bsz, src_len = src_tokens.size()[:2]
         beam_size = self.beam_size
 
         if constraints is not None and not self.search.supports_constraints:
@@ -219,7 +229,28 @@ class SequenceGenerator(nn.Module):
             self.min_len <= max_len
         ), "min_len cannot be larger than max_len, please adjust these!"
         # compute the encoder output for each beam
-        encoder_outs = self.model.forward_encoder(net_input)
+        encoder_outs1 = self.model.forward_encoder({'src_tokens': net_input['src_tokens'],
+                                                    'src_lengths': net_input['src_lengths'],
+                                                    'seg_idx': 0})
+        if inter_type == 'add':
+            seg_idx2 = 0
+        elif inter_type == 'sub':
+            seg_idx2 = 1
+        encoder_outs2 = self.model.forward_encoder({'src_tokens': net_input['src_tokens2'],
+                                                    'src_lengths': net_input['src_lengths2'],
+                                                    'seg_idx': seg_idx2})
+
+        def _cat_2_encoder_outs(encoder_out1, encoder_out2):
+            return EncoderOut(
+                encoder_out=torch.cat([encoder_out1.encoder_out, encoder_out2.encoder_out], dim=0),   # T x B x C
+                encoder_padding_mask=torch.cat([encoder_out1.encoder_padding_mask, encoder_out2.encoder_padding_mask], dim=1),    # B x T
+                encoder_embedding=torch.cat([encoder_out1.encoder_embedding, encoder_out2.encoder_embedding], dim=1), # B x T x C
+                encoder_states=[torch.cat([s1, s2], dim=0) for s1, s2 in zip(encoder_out1.encoder_states, encoder_out2.encoder_states)] if encoder_out1.encoder_states is not None and encoder_out2.encoder_states is not None else None,    # List[T x B x C]
+                src_tokens=None,
+                src_lengths=None,
+        )
+
+        encoder_outs = [_cat_2_encoder_outs(eo1, eo2) for eo1, eo2 in zip(encoder_outs1, encoder_outs2)]
 
         # placeholder of indices for bsz * beam_size to hold tokens and accumulative scores
         new_order = torch.arange(bsz).view(-1, 1).repeat(1, beam_size).view(-1)

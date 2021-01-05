@@ -260,6 +260,8 @@ class TranslationTask(LegacyFairseqTask):
                             help='print sample generations during validation')
         parser.add_argument('--load-corpus2', action='store_true',
                             help='load another training corpus for mixup')
+        parser.add_argument('--eval-inter-type', type=str, default='add', metavar='STR',
+                            help='interaction type between two inputs during evaluation')
         # fmt: on
 
     def __init__(self, args, src_dict, tgt_dict):
@@ -351,9 +353,9 @@ class TranslationTask(LegacyFairseqTask):
         return model
 
     def valid_step(self, sample, model, criterion):
-        loss, sample_size, logging_output = super().valid_step(sample, model, criterion)
+        loss, sample_size, logging_output = super().valid_step(sample, model, criterion, inter_type=self.args.eval_inter_type)
         if self.args.eval_bleu:
-            bleu = self._inference_with_bleu(self.sequence_generator, sample, model)
+            bleu = self._inference_with_bleu(self.sequence_generator, sample, model, inter_type=self.args.eval_inter_type)
             logging_output['_bleu_sys_len'] = bleu.sys_len
             logging_output['_bleu_ref_len'] = bleu.ref_len
             # we split counts into separate entries so that they can be
@@ -416,7 +418,7 @@ class TranslationTask(LegacyFairseqTask):
         """Return the target :class:`~fairseq.data.Dictionary`."""
         return self.tgt_dict
 
-    def _inference_with_bleu(self, generator, sample, model):
+    def _inference_with_bleu(self, generator, sample, model, inter_type=None):
         import sacrebleu
 
         def decode(toks, escape_unk=False):
@@ -436,7 +438,7 @@ class TranslationTask(LegacyFairseqTask):
                 s = self.tokenizer.decode(s)
             return s
 
-        gen_out = self.inference_step(generator, [model], sample, prefix_tokens=None)
+        gen_out = self.inference_step(generator, [model], sample, prefix_tokens=None, inter_type=inter_type)
         hyps, refs = [], []
         for i in range(len(gen_out)):
             hyps.append(decode(gen_out[i][0]['tokens']))
