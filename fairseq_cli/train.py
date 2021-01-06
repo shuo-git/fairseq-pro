@@ -66,6 +66,12 @@ def main(args):
 
     # Build model and criterion
     model = task.build_model(args)
+    if args.freeze_encoder:
+        for param in model.encoder.parameters():
+            param.requires_grad = False
+    if args.freeze_decoder:
+        for param in model.decoder.parameters():
+            param.requires_grad = False
     criterion = task.build_criterion(args)
     logger.info(model)
     logger.info("task: {} ({})".format(args.task, task.__class__.__name__))

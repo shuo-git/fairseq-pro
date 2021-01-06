@@ -672,5 +672,9 @@ def add_model_args(parser):
     group.add_argument('--arch', '-a', metavar='ARCH',
                        choices=ARCH_MODEL_REGISTRY.keys(),
                        help='model architecture')
+    group.add_argument('--freeze-encoder', action='store_true',
+                       help='Freeze the parameters of encoder')
+    group.add_argument('--freeze-decoder', action='store_true',
+                       help='Freeze the parameters of decoder')
     # fmt: on
     return group

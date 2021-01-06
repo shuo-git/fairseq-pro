@@ -310,6 +310,24 @@ class Trainer(object):
             self.optimizer.load_state_dict(last_optim_state, optimizer_overrides)
 
             self.set_num_updates(last_optim["num_updates"])
+        elif last_optim_state is not None and not reset_lr_scheduler:
+            # rebuild optimizer after loading model, since params may have changed
+            self._build_optimizer()
+
+            # only reload optimizer and lr_scheduler if they match
+            last_optim = self._optim_history[-1]
+            assert (
+                    last_optim["criterion_name"] == self.get_criterion().__class__.__name__
+            ), "Criterion does not match; please reset the optimizer (--reset-optimizer)."
+            assert (
+                    last_optim["optimizer_name"] == self.optimizer.__class__.__name__
+            ), "Optimizer does not match; please reset the optimizer (--reset-optimizer)."
+
+            if not reset_lr_scheduler:
+                self.lr_scheduler.load_state_dict(last_optim["lr_scheduler_state"])
+            # self.optimizer.load_state_dict(last_optim_state, optimizer_overrides)
+
+            self.set_num_updates(last_optim["num_updates"])
 
         if extra_state is not None:
             epoch = extra_state["train_iterator"]["epoch"]
