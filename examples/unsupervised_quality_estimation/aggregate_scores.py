@@ -18,6 +18,10 @@ aggregate_funcs = {
 }
 
 
+def line2probs(_line):
+    return [np.exp(float(x)) for x in _line.split()]
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--input_file', required=True, type=str)
@@ -30,9 +34,11 @@ def main():
 
     segment_scores = []
     for line in open(args.input_file):
-        segment_scores.append(float(line.strip()))
+        segment_scores.append(line2probs(line))
         if len(segment_scores) == args.repeat_times:
-            stream.write('{}\n'.format(aggregate_funcs[args.func](segment_scores)))
+            segment_scores = zip(*segment_scores)
+            res_scores = ['{:.4f}'.format(aggregate_funcs[args.func](x)) for x in segment_scores]
+            stream.write(' '.join(res_scores) + '\n')
             segment_scores = []
 
 
