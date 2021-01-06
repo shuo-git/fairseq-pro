@@ -155,6 +155,8 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='do not perform cross-attention')
         parser.add_argument('--cross-self-attention', default=False, action='store_true',
                             help='perform cross+self-attention')
+        parser.add_argument('--trainable-temperature', default=False, action='store_true',
+                            help='use trainable temperature in softmax')
         # args for "Reducing Transformer Depth on Demand with Structured Dropout" (Fan et al., 2019)
         parser.add_argument('--encoder-layerdrop', type=float, metavar='D', default=0,
                             help='LayerDrop probability for encoder')
@@ -631,14 +633,17 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             nn.init.normal_(
                 self.output_projection.weight, mean=0, std=self.output_embed_dim ** -0.5
             )
-
-        self.logits2t = nn.Linear(
-            self.output_embed_dim, 1, bias=False
-        )
-        nn.init.normal_(
-            self.logits2t.weight, mean=self.output_embed_dim ** -1, std=self.output_embed_dim ** -0.5
-        )
-        self.logits2t_act = nn.Sigmoid()
+        if args.trainable_temperature:
+            self.logits2t = nn.Linear(
+                self.output_embed_dim, 1, bias=False
+            )
+            nn.init.normal_(
+                self.logits2t.weight, mean=self.output_embed_dim ** -1, std=self.output_embed_dim ** -0.5
+            )
+            self.logits2t_act = nn.Sigmoid()
+        else:
+            self.logits2t = None
+            self.logits2t_act = None
 
     def build_decoder_layer(self, args, no_encoder_attn=False):
         return TransformerDecoderLayer(args, no_encoder_attn)
@@ -679,7 +684,8 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         )
         if self.logits2t is not None:
             temperature = self.logits2t_act(self.logits2t(x))
-        # temperature = 1.0
+        else:
+            temperature = 1.0
         if not features_only:
             x = self.output_layer(x) / temperature
         return x, extra
