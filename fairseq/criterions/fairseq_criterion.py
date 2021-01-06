@@ -46,8 +46,6 @@ class FairseqCriterion(_Loss):
 
             if p.name == 'task':
                 init_args['task'] = task
-            elif p.name == 'args':
-                init_args['args'] = args
             elif hasattr(args, p.name):
                 init_args[p.name] = getattr(args, p.name)
             elif p.default != p.empty:
