@@ -37,12 +37,13 @@ def label_smoothed_nll_loss(lprobs, target, epsilon, ignore_index=None, reduce=T
 @register_criterion('ranking_loss')
 class RankingLossCriterion(FairseqCriterion):
 
-    def __init__(self, task, sentence_avg, label_smoothing, alpha, ranking_lambda):
+    def __init__(self, task, sentence_avg, label_smoothing, alpha, ranking_lambda, ce_lambda):
         super().__init__(task)
         self.sentence_avg = sentence_avg
         self.eps = label_smoothing
         self.alpha = alpha
         self.ranking_lambda = ranking_lambda
+        self.ce_lambda = ce_lambda
         self.pad_idx = task.tgt_dict.pad()
         self.eos_idx = task.tgt_dict.eos()
 
@@ -53,7 +54,9 @@ class RankingLossCriterion(FairseqCriterion):
         parser.add_argument('--label-smoothing', default=0., type=float, metavar='D',
                             help='epsilon for label smoothing, 0 means no label smoothing')
         parser.add_argument('--ranking-lambda', default=0.0, type=float,
-                            help='total_loss = cross_entropy + lambda x ranking_loss')
+                            help='total_loss = ce_lambda x cross_entropy + ranking_lambda x ranking_loss')
+        parser.add_argument('--ce-lambda', default=1.0, type=float,
+                            help='total_loss = ce_lambda x cross_entropy + ranking_lambda x ranking_loss')
         parser.add_argument('--alpha', default=1.0, type=float,
                             help='ranking_loss = alpha x (log s1 - log s2) - (log p1 - log p2)')
         # fmt: on
@@ -100,12 +103,12 @@ class RankingLossCriterion(FairseqCriterion):
             lprobs_hyp1 = lprobs_hyp1.sum(dim=1) / (lengths[:, 0] + 1e-4)
             lprobs_hyp2 = lprobs_hyp2.sum(dim=1) / (lengths[:, 1] + 1e-4)
 
-            cali_loss = (torch.log(scores[0]) - torch.log(scores[1])) - (lprobs_hyp1 - lprobs_hyp2)
+            cali_loss = self.alpha * (torch.log(scores[0]) - torch.log(scores[1])) - (lprobs_hyp1 - lprobs_hyp2)
             cali_loss = torch.max(torch.zeros_like(cali_loss), cali_loss) * lengths.mean(dim=1)
             if reduce:
                 cali_loss = cali_loss.sum()
 
-            loss = loss + self.ranking_lambda * cali_loss
+            loss = self.ce_lambda * loss + self.ranking_lambda * cali_loss
 
             sample_size = sample['target'].size(0) if self.sentence_avg else sample['ntokens']
             logging_output = {
