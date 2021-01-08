@@ -81,8 +81,12 @@ class RankingLossCriterion(FairseqCriterion):
                 'sample_size': sample_size,
             }
         else:
-            net_output = model(**sample['net_input'])
-            loss, nll_loss = self.compute_loss(model, net_output, sample, reduce=reduce)
+            if self.ce_lambda > 0:
+                net_output = model(**sample['net_input'])
+                loss, nll_loss = self.compute_loss(model, net_output, sample, reduce=reduce)
+            else:
+                loss = 0.
+                nll_loss = 0.
 
             prev_hyps, hyps, scores, lengths = self.generate(model, sample, generator)
             model.train()
@@ -112,9 +116,9 @@ class RankingLossCriterion(FairseqCriterion):
 
             sample_size = sample['target'].size(0) if self.sentence_avg else sample['ntokens']
             logging_output = {
-                'loss': loss.data,
-                'nll_loss': nll_loss.data,
-                'cali_loss': cali_loss if type(cali_loss) is float else cali_loss.data,
+                'loss': loss.data if type(loss) is torch.Tensor else loss,
+                'nll_loss': nll_loss.data if type(nll_loss) is torch.Tensor else nll_loss,
+                'cali_loss': cali_loss.data if type(cali_loss) is torch.Tensor else cali_loss,
                 'ntokens': sample['ntokens'],
                 'nsentences': sample['target'].size(0),
                 'sample_size': sample_size,

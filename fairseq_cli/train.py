@@ -66,10 +66,14 @@ def main(args):
 
     # Build model and criterion
     model = task.build_model(args)
-    # for param in model.parameters():
-    #     param.requires_grad = False
-    # for param in model.decoder.logits2t.parameters():
-    #     param.requires_grad = True
+    if not model.decoder.calibration_type == 'all':
+        for param in model.parameters():
+            param.requires_grad = False
+    if model.decoder.calibration_type == 'scalar':
+        model.decoder.logits_temperature.requires_grad = True
+    elif model.decoder.calibration_type == 'linear':
+        for param in model.decoder.logits2t.parameters():
+            param.requires_grad = True
 
     criterion = task.build_criterion(args)
     logger.info(model)
