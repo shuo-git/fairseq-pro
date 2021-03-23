@@ -225,6 +225,67 @@ def main(args):
             )
         )
 
+    def make_binary_word_int_label(input_prefix, output_prefix, lang, num_workers):
+        n_seq_tok = [0, 0]
+
+        def merge_result(worker_result):
+            n_seq_tok[0] += worker_result["nseq"]
+            n_seq_tok[1] += worker_result["ntok"]
+
+        input_file = "{}{}".format(
+            input_prefix, ("." + lang) if lang is not None else ""
+        )
+
+        offsets = Binarizer.find_offsets(input_file, num_workers)
+        pool = None
+        if num_workers > 1:
+            pool = Pool(processes=num_workers - 1)
+            for worker_id in range(1, num_workers):
+                prefix = "{}{}".format(output_prefix, worker_id)
+                pool.apply_async(
+                    binarize_word_int_label,
+                    (
+                        args,
+                        input_file,
+                        prefix,
+                        lang,
+                        offsets[worker_id],
+                        offsets[worker_id + 1]
+                    ),
+                    callback=merge_result
+                )
+            pool.close()
+
+        ds = indexed_dataset.make_builder(dataset_dest_file(args, output_prefix, lang, "bin"),
+                                          impl=args.dataset_impl, vocab_size=None)
+
+        merge_result(
+            Binarizer.binarize_word_int_label(
+                input_file, lambda t: ds.add_item(t),
+                offset=0, end=offsets[1]
+            )
+        )
+
+        if num_workers > 1:
+            pool.join()
+            for worker_id in range(1, num_workers):
+                prefix = "{}{}".format(output_prefix, worker_id)
+                temp_file_path = dataset_dest_prefix(args, prefix, lang)
+                ds.merge_file_(temp_file_path)
+                os.remove(indexed_dataset.data_file_path(temp_file_path))
+                os.remove(indexed_dataset.index_file_path(temp_file_path))
+
+        ds.finalize(dataset_dest_file(args, output_prefix, lang, "idx"))
+
+        logger.info(
+            "[{}] {}: {} sents, {} tokens".format(
+                lang,
+                input_file,
+                n_seq_tok[0],
+                n_seq_tok[1],
+            )
+        )
+
     def make_dataset(vocab, input_prefix, output_prefix, lang, num_workers=1):
         if args.dataset_impl == "raw":
             # Copy original text file to destination folder
@@ -256,9 +317,24 @@ def main(args):
         if args.testpref and os.path.exists(args.testpref + "." + args.align_suffix):
             make_binary_alignment_dataset(args.testpref + "." + args.align_suffix, "test.align", num_workers=args.workers)
 
+    def make_all_word_int_label(lang):
+        if args.train_word_int_label_pref:
+            make_binary_word_int_label(args.train_word_int_label_pref, "train-word-int-label", lang,
+                                       num_workers=args.workers)
+        if args.valid_word_int_label_pref:
+            make_binary_word_int_label(args.valid_word_int_label_pref, "valid-word-int-label", lang,
+                                       num_workers=args.workers)
+        if args.test_word_int_label_pref:
+            make_binary_word_int_label(args.test_word_int_label_pref, "test-word-int-label", lang,
+                                       num_workers=args.workers)
+
     make_all(args.source_lang, src_dict)
+    if args.word_int_label:
+        make_all_word_int_label(args.source_lang)
     if target:
         make_all(args.target_lang, tgt_dict)
+        if args.word_int_label:
+            make_all_word_int_label(args.target_lang)
     if args.align_suffix:
         make_all_alignments()
 
@@ -330,6 +406,19 @@ def binarize_alignments(args, filename, parse_alignment, output_prefix, offset, 
     res = Binarizer.binarize_alignments(filename, parse_alignment, consumer, offset=offset,
                                         end=end)
     ds.finalize(dataset_dest_file(args, output_prefix, None, "idx"))
+    return res
+
+
+def binarize_word_int_label(args, filename, output_prefix, lang, offset, end):
+    ds = indexed_dataset.make_builder(dataset_dest_file(args, output_prefix, lang, "bin"),
+                                      impl=args.dataset_impl, vocab_size=None)
+
+    def consumer(tensor):
+        ds.add_item(tensor)
+
+    res = Binarizer.binarize_word_int_label(filename, consumer, offset=offset, end=end)
+
+    ds.finalize(dataset_dest_file(args, output_prefix, lang, "idx"))
     return res
 
 

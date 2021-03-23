@@ -92,6 +92,23 @@ class Binarizer:
         return {"nseq": nseq}
 
     @staticmethod
+    def binarize_word_int_label(filename, consumer, offset=0, end=-1):
+        nseq, ntok = 0, 0
+        with open(filename, 'r', encoding='utf-8') as f:
+            f.seek(offset)
+            line = safe_readline(f)
+            while line:
+                if end > 0 and f.tell() > end:
+                    break
+                labels = [int(x) for x in line.strip().split()]
+                nseq += 1
+                ntok += len(labels)
+                labels = torch.IntTensor(labels)
+                consumer(labels)
+                line = f.readline()
+        return {'nseq': nseq, 'ntok': ntok}
+
+    @staticmethod
     def find_offsets(filename, num_chunks):
         with open(PathManager.get_local_path(filename), "r", encoding="utf-8") as f:
             size = os.fstat(f.fileno()).st_size

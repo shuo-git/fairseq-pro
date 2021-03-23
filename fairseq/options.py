@@ -270,6 +270,12 @@ def add_preprocess_args(parser):
                        help="comma separated, valid file prefixes")
     group.add_argument("--testpref", metavar="FP", default=None,
                        help="comma separated, test file prefixes")
+    group.add_argument("--train-word-int-label-pref", metavar="FP", default=None,
+                       help="train word int label file prefix")
+    group.add_argument("--valid-word-int-label-pref", metavar="FP", default=None,
+                       help="valid word int label file prefix")
+    group.add_argument("--test-word-int-label-pref", metavar="FP", default=None,
+                       help="test word int label file prefix")
     group.add_argument("--align-suffix", metavar="FP", default=None,
                        help="alignment file suffix")
     group.add_argument("--destdir", metavar="DIR", default="data-bin",
@@ -288,6 +294,8 @@ def add_preprocess_args(parser):
                        help="number of source words to retain")
     group.add_argument("--alignfile", metavar="ALIGN", default=None,
                        help="an alignment file (optional)")
+    group.add_argument("--word-int-label", action="store_true",
+                       help="load word-level int label files")
     parser.add_argument('--dataset-impl', metavar='FORMAT', default='mmap',
                         choices=get_available_dataset_impl(),
                         help='output dataset implementation')
