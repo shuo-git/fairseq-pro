@@ -22,6 +22,7 @@ from fairseq.data import (
     PrependTokenDataset,
     StripTokenDataset,
     TokenBlockDataset,
+    TokenLabelBlockDataset,
     TransformEosDataset,
     TruncatedDictionary,
 )
@@ -94,6 +95,8 @@ class LanguageModelingTask(FairseqTask):
         parser.add_argument('--shorten-data-split-list', default='',
                             help='comma-separated list of dataset splits to apply shortening to, '
                                  'e.g., "train,valid" (default: all dataset splits)')
+        parser.add_argument('--load-word-int-label', action='store_true',
+                            help='load word int label file')
         # fmt: on
 
     def __init__(self, args, dictionary, output_dictionary=None, targets=None):
@@ -164,7 +167,7 @@ class LanguageModelingTask(FairseqTask):
         Args:
             split (str): name of the split (e.g., train, valid, test)
         """
-        paths = utils.split_paths(self.args.data)
+        paths = utils.split_paths(self.args.data)       # path to data-bin
         assert len(paths) > 0
 
         data_path = paths[(epoch - 1) % len(paths)]
@@ -173,19 +176,32 @@ class LanguageModelingTask(FairseqTask):
         dataset = data_utils.load_indexed_dataset(
             split_path, self.dictionary, self.args.dataset_impl, combine=combine
         )
+
         if dataset is None:
             raise FileNotFoundError(
                 "Dataset not found: {} ({})".format(split, split_path)
             )
 
-        dataset = maybe_shorten_dataset(
-            dataset,
-            split,
-            self.args.shorten_data_split_list,
-            self.args.shorten_method,
-            self.args.tokens_per_sample,
-            self.args.seed,
-        )
+        if self.args.load_word_int_label:
+            word_int_label_dataset = data_utils.load_indexed_dataset(
+                split_path + "-word-int-label", None, self.args.dataset_impl, combine=combine
+            )
+
+            if word_int_label_dataset is None:
+                raise FileNotFoundError(
+                    "Dataset not found: {} ({})".format(split + "-word-int-label", split_path + "-word-int-label")
+                )
+        else:
+            word_int_label_dataset = None
+
+        # dataset = maybe_shorten_dataset(
+        #     dataset,
+        #     split,
+        #     self.args.shorten_data_split_list,
+        #     self.args.shorten_method,
+        #     self.args.tokens_per_sample,
+        #     self.args.seed,
+        # )
 
         dataset = TokenBlockDataset(
             dataset,
@@ -197,10 +213,22 @@ class LanguageModelingTask(FairseqTask):
             include_targets=True,
         )
 
-        add_eos_for_other_targets = (
-            self.args.sample_break_mode is not None
-            and self.args.sample_break_mode != "none"
-        )
+        if self.args.load_word_int_label:
+            word_int_label_dataset = TokenLabelBlockDataset(
+                word_int_label_dataset,
+                word_int_label_dataset.sizes,
+                self.args.tokens_per_sample,
+                pad=None,
+                eos=None,
+                break_mode=self.args.sample_break_mode,
+                include_targets=True,
+            )
+
+        # add_eos_for_other_targets = (
+        #     self.args.sample_break_mode is not None
+        #     and self.args.sample_break_mode != "none"
+        # )
+        add_eos_for_other_targets = False
 
         self.datasets[split] = self._initialize_dataset(
             dataset=dataset,
@@ -209,8 +237,9 @@ class LanguageModelingTask(FairseqTask):
             tgt_vocab=self.output_dictionary,
             add_eos_for_other_targets=add_eos_for_other_targets,
             shuffle=True,
-            targets=self.targets,
-            add_bos_token=self.args.add_bos_token,
+            targets=self.targets,                   # ['future']
+            add_bos_token=self.args.add_bos_token,  # False
+            word_int_label_dataset=word_int_label_dataset
         )
 
     def _initialize_dataset(self, **kwargs):

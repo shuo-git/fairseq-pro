@@ -32,6 +32,14 @@ def collate(samples, pad_idx, eos_idx):
         target = merge('target', is_target_list)
     else:
         target = src_tokens
+    if samples[0]['source_wil'] is not None:
+        src_wil = merge('source_wil')
+    else:
+        src_wil = None
+    if samples[0]['target_wil'] is not None:
+        tgt_wil = merge('target_wil')
+    else:
+        tgt_wil = None
 
     return {
         'id': torch.LongTensor([s['id'] for s in samples]),
@@ -42,8 +50,10 @@ def collate(samples, pad_idx, eos_idx):
             'src_lengths': torch.LongTensor([
                 s['source'].numel() for s in samples
             ]),
+            'src_wil': src_wil,
         },
         'target': target,
+        'tgt_wil': tgt_wil,
     }
 
 
@@ -60,7 +70,7 @@ class MonolingualDataset(FairseqDataset):
     """
 
     def __init__(self, dataset, sizes, src_vocab, tgt_vocab, add_eos_for_other_targets, shuffle,
-                 targets=None, add_bos_token=False):
+                 targets=None, add_bos_token=False, word_int_label_dataset=None):
         self.dataset = dataset
         self.sizes = np.array(sizes)
         self.vocab = src_vocab
@@ -68,6 +78,7 @@ class MonolingualDataset(FairseqDataset):
         self.add_eos_for_other_targets = add_eos_for_other_targets
         self.shuffle = shuffle
         self.add_bos_token = add_bos_token
+        self.word_int_label_dataset = word_int_label_dataset
 
         assert targets is None or all(t in {'self', 'future', 'past'} for t in targets), \
             "targets must be none or one of 'self', 'future', 'past'"
@@ -86,12 +97,21 @@ class MonolingualDataset(FairseqDataset):
             # Right-to-left language models should condition on *source* and
             # predict *past_target*.
             source, future_target, past_target = self.dataset[index]
-            source, target = self._make_source_target(source, future_target, past_target)
+            # source, target = self._make_source_target(source, future_target, past_target)
+            target = future_target
+
+            if self.word_int_label_dataset is not None:
+                source_word_int_label, target_word_int_label, _ = self.word_int_label_dataset[index]
         else:
             source = self.dataset[index]
             target = None
-        source, target = self._maybe_add_bos(source, target)
-        return {'id': index, 'source': source, 'target': target}
+        # source, target = self._maybe_add_bos(source, target)
+
+        if self.word_int_label_dataset is None:
+            return {'id': index, 'source': source, 'target': target}
+        else:
+            return {'id': index, 'source': source, 'target': target,
+                    'source_wil': source_word_int_label, 'target_wil': target_word_int_label}
 
     def __len__(self):
         return len(self.dataset)
@@ -198,3 +218,4 @@ class MonolingualDataset(FairseqDataset):
 
     def prefetch(self, indices):
         self.dataset.prefetch(indices)
+        self.word_int_label_dataset.prefetch(indices)
