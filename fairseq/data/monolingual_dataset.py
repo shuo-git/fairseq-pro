@@ -13,31 +13,33 @@ def collate(samples, pad_idx, eos_idx):
     if len(samples) == 0:
         return {}
 
-    def merge(key, is_list=False):
+    def merge(key, is_list=False, _pad_idx=None):
         if is_list:
             res = []
             for i in range(len(samples[0][key])):
                 res.append(data_utils.collate_tokens(
-                    [s[key][i] for s in samples], pad_idx, eos_idx, left_pad=False,
+                    [s[key][i] for s in samples], _pad_idx, eos_idx, left_pad=False,
                 ))
             return res
         else:
             return data_utils.collate_tokens(
-                [s[key] for s in samples], pad_idx, eos_idx, left_pad=False,
+                [s[key] for s in samples], _pad_idx, eos_idx, left_pad=False,
             )
 
-    src_tokens = merge('source')
+    src_tokens = merge('source', _pad_idx=pad_idx)
     if samples[0]['target'] is not None:
         is_target_list = isinstance(samples[0]['target'], list)
-        target = merge('target', is_target_list)
+        target = merge('target', is_target_list, _pad_idx=pad_idx)
     else:
         target = src_tokens
     if samples[0]['source_wil'] is not None:
-        src_wil = merge('source_wil')
+        wil_max = torch.max(samples[0]['source_wil']).item()
+        src_wil = merge('source_wil', _pad_idx=wil_max+1)
     else:
         src_wil = None
     if samples[0]['target_wil'] is not None:
-        tgt_wil = merge('target_wil')
+        wil_max = torch.max(samples[0]['target_wil']).item()
+        tgt_wil = merge('target_wil', _pad_idx=wil_max+1)
     else:
         tgt_wil = None
 
