@@ -171,6 +171,8 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='block size of quantization noise at training time')
         parser.add_argument('--quant-noise-scalar', type=float, metavar='D', default=0,
                             help='scalar quantization noise and scalar quantization at training time')
+        parser.add_argument('--language-embedding-num', default=0, type=int, metavar='N',
+                            help='number of language embeddings')
         # fmt: on
 
     @classmethod
@@ -572,6 +574,9 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             if not args.no_token_positional_embeddings
             else None
         )
+
+        # if self.args.language_embedding_num > 0:
+
 
         if getattr(args, "layernorm_embedding", False):
             self.layernorm_embedding = LayerNorm(embed_dim)
