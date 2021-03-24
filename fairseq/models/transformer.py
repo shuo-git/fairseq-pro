@@ -171,8 +171,6 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='block size of quantization noise at training time')
         parser.add_argument('--quant-noise-scalar', type=float, metavar='D', default=0,
                             help='scalar quantization noise and scalar quantization at training time')
-        parser.add_argument('--language-embedding-num', default=0, type=int, metavar='N',
-                            help='number of language embeddings')
         # fmt: on
 
     @classmethod
@@ -575,8 +573,9 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             else None
         )
 
-        # if self.args.language_embedding_num > 0:
-
+        if self.args.language_embedding_num > 0:
+            self.embed_languages = Embedding(self.args.language_embedding_num + 1, embed_dim,
+                                             self.args.language_embedding_num)
 
         if getattr(args, "layernorm_embedding", False):
             self.layernorm_embedding = LayerNorm(embed_dim)
@@ -674,6 +673,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             incremental_state=incremental_state,
             alignment_layer=alignment_layer,
             alignment_heads=alignment_heads,
+            prev_output_wil=kwargs.get('src_wil', None),
         )
         if not features_only:
             x = self.output_layer(x)
@@ -687,6 +687,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         full_context_alignment: bool = False,
         alignment_layer: Optional[int] = None,
         alignment_heads: Optional[int] = None,
+        prev_output_wil = None,
     ):
         return self.extract_features_scriptable(
             prev_output_tokens,
@@ -695,6 +696,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             full_context_alignment,
             alignment_layer,
             alignment_heads,
+            prev_output_wil=prev_output_wil,
         )
 
     """
@@ -711,6 +713,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         full_context_alignment: bool = False,
         alignment_layer: Optional[int] = None,
         alignment_heads: Optional[int] = None,
+        prev_output_wil = None,
     ):
         """
         Similar to *forward* but only return features.
@@ -734,6 +737,18 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         if alignment_layer is None:
             alignment_layer = self.num_layers - 1
 
+        if prev_output_wil is not None:
+            # Step1: align the lengths of tok and wil
+            wil_length = prev_output_wil.shape[1]
+            tok_length = prev_output_tokens.shape[1]
+            if wil_length > tok_length:
+                prev_output_wil = prev_output_wil[:, :tok_length]
+            elif wil_length < tok_length:
+                ending_wil = prev_output_wil[:, -1:]
+                prev_output_wil = torch.cat([prev_output_wil] + [ending_wil] * (tok_length - wil_length), dim=1)
+            # Step2: padding wil
+            prev_output_wil[prev_output_tokens == self.padding_idx] = self.args.language_embedding_num
+
         # embed positions
         positions = (
             self.embed_positions(
@@ -742,11 +757,15 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             if self.embed_positions is not None
             else None
         )
+        # embed language indices
+        lang_indices = self.embed_languages(prev_output_wil) if prev_output_wil is not None else None
 
         if incremental_state is not None:
             prev_output_tokens = prev_output_tokens[:, -1:]
             if positions is not None:
                 positions = positions[:, -1:]
+            if lang_indices is not None:
+                lang_indices = lang_indices[:, -1:]
 
         # embed tokens and positions
         x = self.embed_scale * self.embed_tokens(prev_output_tokens)
@@ -759,6 +778,9 @@ class TransformerDecoder(FairseqIncrementalDecoder):
 
         if positions is not None:
             x += positions
+
+        if lang_indices is not None:
+            x += lang_indices
 
         if self.layernorm_embedding is not None:
             x = self.layernorm_embedding(x)

@@ -99,6 +99,8 @@ class LanguageModelingTask(FairseqTask):
                             help='load word int label file')
         parser.add_argument('--word-int-label-pad-idx', type=int, metavar='N',
                             help='pad idx of word int label')
+        parser.add_argument('--language-embedding-num', default=0, type=int, metavar='N',
+                            help='number of language embeddings')
         # fmt: on
 
     def __init__(self, args, dictionary, output_dictionary=None, targets=None):
@@ -305,11 +307,18 @@ class LanguageModelingTask(FairseqTask):
             # pass the `prefix_tokens` argument instead
             if prefix_tokens is None and sample["net_input"]["src_tokens"].nelement():
                 prefix_tokens = sample["net_input"]["src_tokens"]
+                if sample["net_input"]["src_wil"] is not None:
+                    prefix_wil = sample["net_input"]["src_wil"]
+                    assert prefix_tokens.shape == prefix_wil.shape
+                else:
+                    prefix_wil = None
                 if prefix_tokens[:, 0].eq(bos_token).all():
                     prefix_tokens = prefix_tokens[:, 1:]
+                    # if prefix_wil is not None:
+                    #     prefix_wil = prefix_wil[:, 1:]
 
             return generator.generate(
-                models, sample, prefix_tokens=prefix_tokens, bos_token=bos_token,
+                models, sample, prefix_tokens=prefix_tokens, bos_token=bos_token, prefix_wil=prefix_wil
             )
 
     @property

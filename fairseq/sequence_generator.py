@@ -171,6 +171,7 @@ class SequenceGenerator(nn.Module):
         prefix_tokens: Optional[Tensor] = None,
         constraints: Optional[Tensor] = None,
         bos_token: Optional[int] = None,
+        prefix_wil: Optional[Tensor] = None,
     ):
         incremental_states = torch.jit.annotate(
             List[Dict[str, Dict[str, Optional[Tensor]]]],
@@ -225,6 +226,7 @@ class SequenceGenerator(nn.Module):
         new_order = torch.arange(bsz).view(-1, 1).repeat(1, beam_size).view(-1)
         new_order = new_order.to(src_tokens.device).long()
         encoder_outs = self.model.reorder_encoder_out(encoder_outs, new_order)
+        prefix_wil = prefix_wil.index_select(0, new_order)
         # ensure encoder_outs is a List.
         assert encoder_outs is not None
 
@@ -285,12 +287,14 @@ class SequenceGenerator(nn.Module):
                 encoder_outs = self.model.reorder_encoder_out(
                     encoder_outs, reorder_state
                 )
+                prefix_wil = prefix_wil.index_select(0, reorder_state)
 
             lprobs, avg_attn_scores = self.model.forward_decoder(
                 tokens[:, : step + 1],
                 encoder_outs,
                 incremental_states,
                 self.temperature,
+                prefix_wil=prefix_wil
             )
             lprobs[lprobs != lprobs] = torch.tensor(-math.inf).to(lprobs)
 
@@ -771,6 +775,7 @@ class EnsembleModel(nn.Module):
         encoder_outs: List[EncoderOut],
         incremental_states: List[Dict[str, Dict[str, Optional[Tensor]]]],
         temperature: float = 1.0,
+        prefix_wil: Tensor = None,
     ):
         log_probs = []
         avg_attn: Optional[Tensor] = None
@@ -784,9 +789,14 @@ class EnsembleModel(nn.Module):
                     tokens,
                     encoder_out=encoder_out,
                     incremental_state=incremental_states[i],
+                    src_wil=prefix_wil,
                 )
             else:
-                decoder_out = model.decoder.forward(tokens, encoder_out=encoder_out)
+                decoder_out = model.decoder.forward(
+                    tokens,
+                    encoder_out=encoder_out,
+                    src_wil=prefix_wil,
+                )
 
             attn: Optional[Tensor] = None
             decoder_len = len(decoder_out)

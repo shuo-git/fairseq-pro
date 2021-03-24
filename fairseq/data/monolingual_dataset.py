@@ -33,6 +33,7 @@ def collate(samples, pad_idx, eos_idx, wil_pad_idx=None):
     else:
         target = src_tokens
     if samples[0]['source_wil'] is not None:
+        wil_pad_idx = samples[0]['source_wil'][-1].item()
         src_wil = merge('source_wil', _pad_idx=wil_pad_idx)
     else:
         src_wil = None
