@@ -9,7 +9,7 @@ import torch
 from . import data_utils, FairseqDataset
 
 
-def collate(samples, pad_idx, eos_idx, wil_pad_idx=None):
+def collate(samples, pad_idx, eos_idx):
     if len(samples) == 0:
         return {}
 
@@ -38,6 +38,7 @@ def collate(samples, pad_idx, eos_idx, wil_pad_idx=None):
     else:
         src_wil = None
     if samples[0]['target_wil'] is not None:
+        wil_pad_idx = samples[0]['target_wil'][-1].item()
         tgt_wil = merge('target_wil', _pad_idx=wil_pad_idx)
     else:
         tgt_wil = None
@@ -72,7 +73,7 @@ class MonolingualDataset(FairseqDataset):
 
     def __init__(self, dataset, sizes, src_vocab, tgt_vocab, add_eos_for_other_targets, shuffle,
                  targets=None, add_bos_token=False,
-                 word_int_label_dataset=None, word_int_label_pad_idx=None):
+                 word_int_label_dataset=None):
         self.dataset = dataset
         self.sizes = np.array(sizes)
         self.vocab = src_vocab
@@ -81,7 +82,6 @@ class MonolingualDataset(FairseqDataset):
         self.shuffle = shuffle
         self.add_bos_token = add_bos_token
         self.word_int_label_dataset = word_int_label_dataset
-        self.word_int_label_pad_idx = word_int_label_pad_idx
 
         assert targets is None or all(t in {'self', 'future', 'past'} for t in targets), \
             "targets must be none or one of 'self', 'future', 'past'"
@@ -193,7 +193,7 @@ class MonolingualDataset(FairseqDataset):
                   target sentence of shape `(bsz, tgt_len)`. Padding will appear
                   on the right.
         """
-        return collate(samples, self.vocab.pad(), self.vocab.eos(), wil_pad_idx=self.word_int_label_pad_idx)
+        return collate(samples, self.vocab.pad(), self.vocab.eos())
 
     def num_tokens(self, index):
         """Return the number of tokens in a sample. This value is used to

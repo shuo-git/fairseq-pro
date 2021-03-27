@@ -97,10 +97,10 @@ class LanguageModelingTask(FairseqTask):
                                  'e.g., "train,valid" (default: all dataset splits)')
         parser.add_argument('--load-word-int-label', action='store_true',
                             help='load word int label file')
-        parser.add_argument('--word-int-label-pad-idx', type=int, metavar='N',
-                            help='pad idx of word int label')
         parser.add_argument('--language-embedding-num', default=0, type=int, metavar='N',
                             help='number of language embeddings')
+        parser.add_argument('--use-learned-language-embedding', action='store_true',
+                            help='if True, use learned language embeddings')
         # fmt: on
 
     def __init__(self, args, dictionary, output_dictionary=None, targets=None):
@@ -244,7 +244,6 @@ class LanguageModelingTask(FairseqTask):
             targets=self.targets,                   # ['future']
             add_bos_token=self.args.add_bos_token,  # False
             word_int_label_dataset=word_int_label_dataset,
-            word_int_label_pad_idx=self.args.word_int_label_pad_idx,
         )
 
     def _initialize_dataset(self, **kwargs):

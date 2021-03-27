@@ -779,7 +779,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         if positions is not None:
             x += positions
 
-        if lang_indices is not None:
+        if lang_indices is not None and self.args.use_learned_language_embedding:
             x += lang_indices
 
         if self.layernorm_embedding is not None:
