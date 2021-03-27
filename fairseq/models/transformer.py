@@ -739,13 +739,14 @@ class TransformerDecoder(FairseqIncrementalDecoder):
 
         if prev_output_wil is not None:
             # Step1: align the lengths of tok and wil
-            wil_length = prev_output_wil.shape[1]
-            tok_length = prev_output_tokens.shape[1]
-            if wil_length > tok_length:
-                prev_output_wil = prev_output_wil[:, :tok_length]
-            elif wil_length < tok_length:
-                ending_wil = prev_output_wil[:, -1:]
-                prev_output_wil = torch.cat([prev_output_wil] + [ending_wil] * (tok_length - wil_length), dim=1)
+            if not self.training:
+                wil_length = prev_output_wil.shape[1]
+                tok_length = prev_output_tokens.shape[1]
+                if wil_length > tok_length:
+                    prev_output_wil = prev_output_wil[:, :tok_length]
+                elif wil_length < tok_length:
+                    ending_wil = prev_output_wil[:, -1:]
+                    prev_output_wil = torch.cat([prev_output_wil] + [ending_wil] * (tok_length - wil_length), dim=1)
             # Step2: padding wil
             prev_output_wil[prev_output_tokens == self.padding_idx] = self.args.language_embedding_num
 
