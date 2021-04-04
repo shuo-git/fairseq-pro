@@ -97,7 +97,7 @@ class LanguageModelingTask(FairseqTask):
                                  'e.g., "train,valid" (default: all dataset splits)')
         parser.add_argument('--load-word-int-label', action='store_true',
                             help='load word int label file')
-        parser.add_argument('--language-embedding-num', default=0, type=int, metavar='N',
+        parser.add_argument('--language-embedding-num', default=20, type=int, metavar='N',
                             help='number of language embeddings')
         parser.add_argument('--use-learned-language-embedding', action='store_true',
                             help='if True, use learned language embeddings')

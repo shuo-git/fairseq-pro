@@ -32,12 +32,12 @@ def collate(samples, pad_idx, eos_idx):
         target = merge('target', is_target_list, _pad_idx=pad_idx)
     else:
         target = src_tokens
-    if samples[0]['source_wil'] is not None:
+    if 'source_wil' in samples[0].keys():
         wil_pad_idx = samples[0]['source_wil'][-1].item()
         src_wil = merge('source_wil', _pad_idx=wil_pad_idx)
     else:
         src_wil = None
-    if samples[0]['target_wil'] is not None:
+    if 'target_wil' in samples[0].keys():
         wil_pad_idx = samples[0]['target_wil'][-1].item()
         tgt_wil = merge('target_wil', _pad_idx=wil_pad_idx)
     else:
