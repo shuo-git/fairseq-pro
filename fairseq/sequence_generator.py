@@ -226,7 +226,8 @@ class SequenceGenerator(nn.Module):
         new_order = torch.arange(bsz).view(-1, 1).repeat(1, beam_size).view(-1)
         new_order = new_order.to(src_tokens.device).long()
         encoder_outs = self.model.reorder_encoder_out(encoder_outs, new_order)
-        prefix_wil = prefix_wil.index_select(0, new_order)
+        if prefix_wil is not None:
+            prefix_wil = prefix_wil.index_select(0, new_order)
         # ensure encoder_outs is a List.
         assert encoder_outs is not None
 
@@ -287,7 +288,8 @@ class SequenceGenerator(nn.Module):
                 encoder_outs = self.model.reorder_encoder_out(
                     encoder_outs, reorder_state
                 )
-                prefix_wil = prefix_wil.index_select(0, reorder_state)
+                if prefix_wil is not None:
+                    prefix_wil = prefix_wil.index_select(0, reorder_state)
 
             lprobs, avg_attn_scores = self.model.forward_decoder(
                 tokens[:, : step + 1],
