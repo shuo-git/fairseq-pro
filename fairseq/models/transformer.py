@@ -576,6 +576,8 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         if self.args.language_embedding_num > 0:
             self.embed_languages = Embedding(self.args.language_embedding_num + 1, embed_dim,
                                              self.args.language_embedding_num)
+        else:
+            self.embed_languages = None
 
         if getattr(args, "layernorm_embedding", False):
             self.layernorm_embedding = LayerNorm(embed_dim)
@@ -759,7 +761,10 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             else None
         )
         # embed language indices
-        lang_indices = self.embed_languages(prev_output_wil) if prev_output_wil is not None else None
+        if self.embed_languages is not None and prev_output_wil is not None:
+            lang_indices = self.embed_languages(prev_output_wil)
+        else:
+            lang_indices = None
 
         if incremental_state is not None:
             prev_output_tokens = prev_output_tokens[:, -1:]
