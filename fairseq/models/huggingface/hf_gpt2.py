@@ -147,7 +147,7 @@ class HuggingFaceGPT2Decoder(FairseqIncrementalDecoder):
 
         outputs = self.model.transformer(
             input_ids=prev_output_tokens,
-            past=past,
+            past_key_values=past,
             attention_mask=attention_mask,
             position_ids=position_ids,
         )
