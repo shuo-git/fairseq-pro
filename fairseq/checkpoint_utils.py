@@ -12,6 +12,7 @@ from collections import OrderedDict
 from typing import Union
 
 import torch
+import torch.nn as nn
 from fairseq.file_io import PathManager
 from fairseq.models import FairseqDecoder, FairseqEncoder
 from torch.serialization import default_restore_location
@@ -172,6 +173,66 @@ def load_checkpoint(args, trainer, **passthrough_args):
         optimizer_overrides,
         reset_meters=reset_meters,
     )
+
+    # if args.load_huggingface_gpt2:
+    if True:
+        from transformers import GPT2LMHeadModel
+        gpt2 = GPT2LMHeadModel.from_pretrained('gpt2')
+        named_parameters = {}
+        for p in gpt2.named_parameters():
+            named_parameters[p[0]] = p[1]
+        wte_ph = Embedding(87798, 768, 1)
+        gpt2_wte = named_parameters["transformer.wte.weight"]
+        wte_ph.weight[2, :] = gpt2_wte[50256, :]
+        wte_ph.weight[4: 50261, :] = gpt2_wte
+        gpt2_state_dict = {}
+        gpt2_state_dict["decoder.embed_tokens.weight"] = wte_ph.weight
+
+        wpe_ph = Embedding(1026, 768, 1)
+        gpt2_wpe = named_parameters["transformer.wpe.weight"]
+        wpe_ph.weight[2:, :] = gpt2_wpe
+        gpt2_state_dict["decoder.embed_positions.weight"] = wpe_ph.weight
+
+        for layer_idx in range(12):
+            gpt2_state_dict["decoder.layers.{}.self_attn_layer_norm.weight".format(layer_idx)] = \
+                named_parameters["transformer.h.{}.ln_1.weight".format(layer_idx)]
+            gpt2_state_dict["decoder.layers.{}.self_attn_layer_norm.bias".format(layer_idx)] = \
+                named_parameters["transformer.h.{}.ln_1.bias".format(layer_idx)]
+
+            attn_proj_weight = named_parameters["transformer.h.{}.attn.c_attn.weight".format(layer_idx)]
+            attn_proj_bias = named_parameters["transformer.h.{}.attn.c_attn.bias".format(layer_idx)]
+            q_proj_weight, k_proj_weight, v_proj_weight = attn_proj_weight.transpose(0, 1).split(768, dim=0)
+            q_proj_bias, k_proj_bias, v_proj_bias = attn_proj_bias.split(768, dim=0)
+            gpt2_state_dict["decoder.layers.{}.self_attn.q_proj.weight".format(layer_idx)] = q_proj_weight
+            gpt2_state_dict["decoder.layers.{}.self_attn.q_proj.bias".format(layer_idx)] = q_proj_bias
+            gpt2_state_dict["decoder.layers.{}.self_attn.k_proj.weight".format(layer_idx)] = k_proj_weight
+            gpt2_state_dict["decoder.layers.{}.self_attn.k_proj.bias".format(layer_idx)] = k_proj_bias
+            gpt2_state_dict["decoder.layers.{}.self_attn.v_proj.weight".format(layer_idx)] = v_proj_weight
+            gpt2_state_dict["decoder.layers.{}.self_attn.v_proj.bias".format(layer_idx)] = v_proj_bias
+
+            gpt2_state_dict["decoder.layers.{}.self_attn.out_proj.weight".format(layer_idx)] = \
+                named_parameters["transformer.h.{}.attn.c_proj.weight".format(layer_idx)].transpose(0, 1)
+            gpt2_state_dict["decoder.layers.{}.self_attn.out_proj.bias".format(layer_idx)] = \
+                named_parameters["transformer.h.{}.attn.c_proj.bias".format(layer_idx)]
+
+            gpt2_state_dict["decoder.layers.{}.final_layer_norm.weight".format(layer_idx)] = \
+                named_parameters["transformer.h.{}.ln_2.weight".format(layer_idx)]
+            gpt2_state_dict["decoder.layers.{}.final_layer_norm.bias".format(layer_idx)] = \
+                named_parameters["transformer.h.{}.ln_2.bias".format(layer_idx)]
+
+            gpt2_state_dict["decoder.layers.{}.fc1.weight".format(layer_idx)] = \
+                named_parameters["transformer.h.{}.mlp.c_fc.weight".format(layer_idx)].transpose(0, 1)
+            gpt2_state_dict["decoder.layers.{}.fc1.bias".format(layer_idx)] = \
+                named_parameters["transformer.h.{}.mlp.c_fc.bias".format(layer_idx)]
+
+            gpt2_state_dict["decoder.layers.{}.fc2.weight".format(layer_idx)] = \
+                named_parameters["transformer.h.{}.mlp.c_proj.weight".format(layer_idx)].transpose(0, 1)
+            gpt2_state_dict["decoder.layers.{}.fc2.bias".format(layer_idx)] = \
+                named_parameters["transformer.h.{}.mlp.c_proj.bias".format(layer_idx)]
+        gpt2_state_dict["decoder.layer_norm.weight"] = named_parameters["transformer.ln_f.weight"]
+        gpt2_state_dict["decoder.layer_norm.bias"] = named_parameters["transformer.ln_f.bias"]
+
+        trainer.get_model().load_state_dict(gpt2_state_dict, strict=False)
 
     if (
         extra_state is not None
@@ -529,3 +590,10 @@ def verify_checkpoint_directory(save_dir: str) -> None:
         raise e
     else:
         os.remove(temp_file_path)
+
+
+def Embedding(num_embeddings, embedding_dim, padding_idx):
+    m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)
+    nn.init.normal_(m.weight, mean=0, std=embedding_dim ** -0.5)
+    nn.init.constant_(m.weight[padding_idx], 0)
+    return m
