@@ -144,14 +144,12 @@ class HuggingFaceGPT2Decoder(FairseqIncrementalDecoder):
         #     .to(prev_output_tokens)
         #     .repeat(prev_output_tokens.size(0), 1)
         # )
-        position_ids = attention_mask.long().cumsum(-1) - 1
-        position_ids.masked_fill_(attention_mask == 0, 1)
 
         outputs = self.model.transformer(
             input_ids=prev_output_tokens,
             past_key_values=past,
             attention_mask=attention_mask,
-            position_ids=position_ids,
+            position_ids=None,
         )
         last_hidden_states = outputs[0]
 
@@ -161,7 +159,7 @@ class HuggingFaceGPT2Decoder(FairseqIncrementalDecoder):
         return last_hidden_states
 
     def max_positions(self):
-        return self.model.config.n_positions - 1
+        return self.model.config.n_positions
 
 
 @register_model_architecture('hf_gpt2', 'hf_gpt2')
