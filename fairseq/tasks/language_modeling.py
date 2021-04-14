@@ -101,6 +101,12 @@ class LanguageModelingTask(FairseqTask):
                             help='number of language embeddings')
         parser.add_argument('--use-learned-language-embedding', action='store_true',
                             help='if True, use learned language embeddings')
+        parser.add_argument('--load-hf-gpt2', action='store_true',
+                            help='if True, load pre-trained gpt2 from huggingface')
+        parser.add_argument('--load-hf-gpt2-to-fairseq', action='store_true',
+                            help='if True, load pre-trained gpt2 from huggingface')
+        parser.add_argument('--gpt2-setting', default='base',
+                            choices=['base', 'medium', 'large', 'xlarge'])
         # fmt: on
 
     def __init__(self, args, dictionary, output_dictionary=None, targets=None):

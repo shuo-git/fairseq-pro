@@ -43,20 +43,34 @@ def collate(samples, pad_idx, eos_idx):
     else:
         tgt_wil = None
 
-    return {
-        'id': torch.LongTensor([s['id'] for s in samples]),
-        'nsentences': len(samples),
-        'ntokens': sum(len(s['source']) for s in samples),
-        'net_input': {
-            'src_tokens': src_tokens,
-            'src_lengths': torch.LongTensor([
-                s['source'].numel() for s in samples
-            ]),
-            'src_wil': src_wil,
-        },
-        'target': target,
-        'tgt_wil': tgt_wil,
-    }
+    if src_wil is not None and tgt_wil is not None:
+        return {
+            'id': torch.LongTensor([s['id'] for s in samples]),
+            'nsentences': len(samples),
+            'ntokens': sum(len(s['source']) for s in samples),
+            'net_input': {
+                'src_tokens': src_tokens,
+                'src_lengths': torch.LongTensor([
+                    s['source'].numel() for s in samples
+                ]),
+                'src_wil': src_wil,
+            },
+            'target': target,
+            'tgt_wil': tgt_wil,
+        }
+    else:
+        return {
+            'id': torch.LongTensor([s['id'] for s in samples]),
+            'nsentences': len(samples),
+            'ntokens': sum(len(s['source']) for s in samples),
+            'net_input': {
+                'src_tokens': src_tokens,
+                'src_lengths': torch.LongTensor([
+                    s['source'].numel() for s in samples
+                ]),
+            },
+            'target': target,
+        }
 
 
 class MonolingualDataset(FairseqDataset):

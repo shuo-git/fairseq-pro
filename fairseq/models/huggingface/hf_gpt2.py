@@ -97,7 +97,7 @@ class HuggingFaceGPT2Decoder(FairseqIncrementalDecoder):
 
         config = GPT2Config(
             vocab_size=len(task.target_dictionary),
-            n_positions=args.max_target_positions + 1,
+            n_positions=args.max_target_positions,
             n_ctx=args.max_target_positions,
             n_embd=args.embed_dim,
             n_layer=args.num_layers,
@@ -139,11 +139,13 @@ class HuggingFaceGPT2Decoder(FairseqIncrementalDecoder):
         attention_mask = prev_output_tokens.ne(self.pad_idx).int()
 
         # set position ids to exclude padding symbols
-        position_ids = attention_mask * (
-            torch.arange(1, 1 + prev_output_tokens.size(1))
-            .to(prev_output_tokens)
-            .repeat(prev_output_tokens.size(0), 1)
-        )
+        # position_ids = attention_mask * (
+        #     torch.arange(1, 1 + prev_output_tokens.size(1))
+        #     .to(prev_output_tokens)
+        #     .repeat(prev_output_tokens.size(0), 1)
+        # )
+        position_ids = attention_mask.long().cumsum(-1) - 1
+        position_ids.masked_fill_(attention_mask == 0, 1)
 
         outputs = self.model.transformer(
             input_ids=prev_output_tokens,

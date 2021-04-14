@@ -270,7 +270,7 @@ def transformer_lm_gpt(args):
     args.decoder_attention_heads = getattr(args, 'decoder_attention_heads', 12)
     args.dropout = getattr(args, 'dropout', 0.1)
     args.attention_dropout = getattr(args, 'attention_dropout', 0.1)
-    args.activation_fn = getattr(args, 'activation_fn', 'gelu')
+    args.activation_fn = getattr(args, 'activation_fn', 'gelu_accurate')
     base_lm_architecture(args)
 
 
@@ -282,7 +282,7 @@ def transformer_lm_gpt2_small(args):
     args.decoder_attention_heads = getattr(args, 'decoder_attention_heads', 16)
     args.dropout = getattr(args, 'dropout', 0.1)
     args.attention_dropout = getattr(args, 'attention_dropout', 0.1)
-    args.activation_fn = getattr(args, 'activation_fn', 'gelu')
+    args.activation_fn = getattr(args, 'activation_fn', 'gelu_accurate')
     base_lm_architecture(args)
 
 
@@ -294,7 +294,7 @@ def transformer_lm_gpt2_medium(args):
     args.decoder_attention_heads = getattr(args, 'decoder_attention_heads', 20)
     args.dropout = getattr(args, 'dropout', 0.1)
     args.attention_dropout = getattr(args, 'attention_dropout', 0.1)
-    args.activation_fn = getattr(args, 'activation_fn', 'gelu')
+    args.activation_fn = getattr(args, 'activation_fn', 'gelu_accurate')
     base_lm_architecture(args)
 
 
@@ -306,5 +306,5 @@ def transformer_lm_gpt2_big(args):
     args.decoder_attention_heads = getattr(args, 'decoder_attention_heads', 25)
     args.dropout = getattr(args, 'dropout', 0.1)
     args.attention_dropout = getattr(args, 'attention_dropout', 0.1)
-    args.activation_fn = getattr(args, 'activation_fn', 'gelu')
+    args.activation_fn = getattr(args, 'activation_fn', 'gelu_accurate')
     base_lm_architecture(args)

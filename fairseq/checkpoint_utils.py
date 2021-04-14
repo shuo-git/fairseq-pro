@@ -166,34 +166,125 @@ def load_checkpoint(args, trainer, **passthrough_args):
             '--finetune-from-model and --restore-file (non-default value) '
             'can not be specified together: ' + str(args))
 
-    extra_state = trainer.load_checkpoint(
-        checkpoint_path,
-        reset_optimizer,
-        reset_lr_scheduler,
-        optimizer_overrides,
-        reset_meters=reset_meters,
-    )
+    if args.load_hf_gpt2:
+        gpt2_vocab_size = 50257
+        if args.gpt2_setting == 'base':
+            hidden_size = 768
+            num_layers = 12
+            max_positions = 1024
+            model_name = 'gpt2'
 
-    # if args.load_huggingface_gpt2:
-    if True:
+        def Embedding(num_embeddings, embedding_dim, padding_idx):
+            m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)
+            nn.init.normal_(m.weight, mean=0, std=0.02)
+            nn.init.constant_(m.weight[padding_idx], 0)
+            return m
+
         from transformers import GPT2LMHeadModel
-        gpt2 = GPT2LMHeadModel.from_pretrained('gpt2')
+        gpt2 = GPT2LMHeadModel.from_pretrained(model_name)
         named_parameters = {}
         for p in gpt2.named_parameters():
             named_parameters[p[0]] = p[1]
-        wte_ph = Embedding(87798, 768, 1)
-        gpt2_wte = named_parameters["transformer.wte.weight"]
-        wte_ph.weight[2, :] = gpt2_wte[50256, :]
-        wte_ph.weight[4: 50261, :] = gpt2_wte
-        gpt2_state_dict = {}
-        gpt2_state_dict["decoder.embed_tokens.weight"] = wte_ph.weight
 
-        wpe_ph = Embedding(1026, 768, 1)
+        wte_ph = Embedding(len(trainer.task.dictionary), hidden_size, padding_idx=1)
+        gpt2_wte = named_parameters["transformer.wte.weight"]
+        wte_ph.weight[0, :] = gpt2_wte[gpt2_vocab_size - 1, :]
+        wte_ph.weight[2, :] = gpt2_wte[gpt2_vocab_size - 1, :]
+        wte_ph.weight[3, :] = gpt2_wte[gpt2_vocab_size - 1, :]
+        wte_ph.weight[4: gpt2_vocab_size + 4, :] = gpt2_wte
+        gpt2_state_dict = {}
+        gpt2_state_dict["decoder.model.transformer.wte.weight"] = wte_ph.weight.data
+
+        gpt2_output_proj = gpt2.lm_head.weight
+        output_proj_ph = nn.Linear(hidden_size, len(trainer.task.dictionary), bias=False)
+        nn.init.normal_(output_proj_ph.weight, mean=0, std=0.02)
+        output_proj_ph.weight[0, :] = gpt2_output_proj[gpt2_vocab_size - 1, :]
+        output_proj_ph.weight[2, :] = gpt2_output_proj[gpt2_vocab_size - 1, :]
+        output_proj_ph.weight[3, :] = gpt2_output_proj[gpt2_vocab_size - 1, :]
+        output_proj_ph.weight[4: gpt2_vocab_size + 4, :] = gpt2_output_proj
+        gpt2_state_dict["decoder.model.lm_head.weight"] = output_proj_ph.weight.data
+
+        gpt2_wpe = named_parameters["transformer.wpe.weight"]
+        gpt2_state_dict["decoder.model.transformer.wpe.weight"] = gpt2_wpe.data
+
+        for layer_idx in range(num_layers):
+            gpt2_state_dict["decoder.model.transformer.h.{}.ln_1.weight".format(layer_idx)] = \
+                named_parameters["transformer.h.{}.ln_1.weight".format(layer_idx)].data
+            gpt2_state_dict["decoder.model.transformer.h.{}.ln_1.bias".format(layer_idx)] = \
+                named_parameters["transformer.h.{}.ln_1.bias".format(layer_idx)].data
+
+            gpt2_state_dict["decoder.model.transformer.h.{}.attn.c_attn.weight".format(layer_idx)] = \
+                named_parameters["transformer.h.{}.attn.c_attn.weight".format(layer_idx)].data
+            gpt2_state_dict["decoder.model.transformer.h.{}.attn.c_attn.bias".format(layer_idx)] = \
+                named_parameters["transformer.h.{}.attn.c_attn.bias".format(layer_idx)].data
+
+            gpt2_state_dict["decoder.model.transformer.h.{}.attn.c_proj.weight".format(layer_idx)] = \
+                named_parameters["transformer.h.{}.attn.c_proj.weight".format(layer_idx)].data
+            gpt2_state_dict["decoder.model.transformer.h.{}.attn.c_proj.bias".format(layer_idx)] = \
+                named_parameters["transformer.h.{}.attn.c_proj.bias".format(layer_idx)].data
+
+            gpt2_state_dict["decoder.model.transformer.h.{}.ln_2.weight".format(layer_idx)] = \
+                named_parameters["transformer.h.{}.ln_2.weight".format(layer_idx)].data
+            gpt2_state_dict["decoder.model.transformer.h.{}.ln_2.bias".format(layer_idx)] = \
+                named_parameters["transformer.h.{}.ln_2.bias".format(layer_idx)].data
+
+            gpt2_state_dict["decoder.model.transformer.h.{}.mlp.c_fc.weight".format(layer_idx)] = \
+                named_parameters["transformer.h.{}.mlp.c_fc.weight".format(layer_idx)].data
+            gpt2_state_dict["decoder.model.transformer.h.{}.mlp.c_fc.bias".format(layer_idx)] = \
+                named_parameters["transformer.h.{}.mlp.c_fc.bias".format(layer_idx)].data
+
+            gpt2_state_dict["decoder.model.transformer.h.{}.mlp.c_proj.weight".format(layer_idx)] = \
+                named_parameters["transformer.h.{}.mlp.c_proj.weight".format(layer_idx)].data
+            gpt2_state_dict["decoder.model.transformer.h.{}.mlp.c_proj.bias".format(layer_idx)] = \
+                named_parameters["transformer.h.{}.mlp.c_proj.bias".format(layer_idx)].data
+        gpt2_state_dict["decoder.model.transformer.ln_f.weight"] = named_parameters["transformer.ln_f.weight"].data
+        gpt2_state_dict["decoder.model.transformer.ln_f.bias"] = named_parameters["transformer.ln_f.bias"].data
+        trainer.get_model().load_state_dict(gpt2_state_dict, strict=False)
+
+    if args.load_hf_gpt2_to_fairseq:
+        gpt2_vocab_size = 50257
+        if args.gpt2_setting == 'base':
+            hidden_size = 768
+            num_layers = 12
+            max_positions = 1024
+            model_name = 'gpt2'
+
+        def Embedding(num_embeddings, embedding_dim, padding_idx):
+            m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)
+            nn.init.normal_(m.weight, mean=0, std=0.02)
+            nn.init.constant_(m.weight[padding_idx], 0)
+            return m
+
+        from transformers import GPT2LMHeadModel
+        gpt2 = GPT2LMHeadModel.from_pretrained(model_name)
+        named_parameters = {}
+        for p in gpt2.named_parameters():
+            named_parameters[p[0]] = p[1]
+
+        wte_ph = Embedding(len(trainer.task.dictionary), hidden_size, padding_idx=1)
+        gpt2_wte = named_parameters["transformer.wte.weight"]
+        wte_ph.weight[0, :] = gpt2_wte[gpt2_vocab_size - 1, :]
+        wte_ph.weight[2, :] = gpt2_wte[gpt2_vocab_size - 1, :]
+        wte_ph.weight[3, :] = gpt2_wte[gpt2_vocab_size - 1, :]
+        wte_ph.weight[4: gpt2_vocab_size + 4, :] = gpt2_wte
+        gpt2_state_dict = {}
+        gpt2_state_dict["decoder.embed_tokens.weight"] = wte_ph.weight.data
+
+        gpt2_output_proj = gpt2.lm_head.weight
+        output_proj_ph = nn.Linear(hidden_size, len(trainer.task.dictionary), bias=False)
+        nn.init.normal_(output_proj_ph.weight, mean=0, std=0.02)
+        output_proj_ph.weight[0, :] = gpt2_output_proj[gpt2_vocab_size - 1, :]
+        output_proj_ph.weight[2, :] = gpt2_output_proj[gpt2_vocab_size - 1, :]
+        output_proj_ph.weight[3, :] = gpt2_output_proj[gpt2_vocab_size - 1, :]
+        output_proj_ph.weight[4: gpt2_vocab_size + 4, :] = gpt2_output_proj
+        gpt2_state_dict["decoder.output_projection.weight"] = output_proj_ph.weight.data
+
+        wpe_ph = Embedding(2 + max_positions, hidden_size, padding_idx=1)
         gpt2_wpe = named_parameters["transformer.wpe.weight"]
         wpe_ph.weight[2:, :] = gpt2_wpe
-        gpt2_state_dict["decoder.embed_positions.weight"] = wpe_ph.weight
+        gpt2_state_dict["decoder.embed_positions.weight"] = wpe_ph.weight.data
 
-        for layer_idx in range(12):
+        for layer_idx in range(num_layers):
             gpt2_state_dict["decoder.layers.{}.self_attn_layer_norm.weight".format(layer_idx)] = \
                 named_parameters["transformer.h.{}.ln_1.weight".format(layer_idx)]
             gpt2_state_dict["decoder.layers.{}.self_attn_layer_norm.bias".format(layer_idx)] = \
@@ -229,10 +320,18 @@ def load_checkpoint(args, trainer, **passthrough_args):
                 named_parameters["transformer.h.{}.mlp.c_proj.weight".format(layer_idx)].transpose(0, 1)
             gpt2_state_dict["decoder.layers.{}.fc2.bias".format(layer_idx)] = \
                 named_parameters["transformer.h.{}.mlp.c_proj.bias".format(layer_idx)]
+
         gpt2_state_dict["decoder.layer_norm.weight"] = named_parameters["transformer.ln_f.weight"]
         gpt2_state_dict["decoder.layer_norm.bias"] = named_parameters["transformer.ln_f.bias"]
-
         trainer.get_model().load_state_dict(gpt2_state_dict, strict=False)
+
+    extra_state = trainer.load_checkpoint(
+        checkpoint_path,
+        reset_optimizer,
+        reset_lr_scheduler,
+        optimizer_overrides,
+        reset_meters=reset_meters,
+    )
 
     if (
         extra_state is not None
@@ -590,10 +689,3 @@ def verify_checkpoint_directory(save_dir: str) -> None:
         raise e
     else:
         os.remove(temp_file_path)
-
-
-def Embedding(num_embeddings, embedding_dim, padding_idx):
-    m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)
-    nn.init.normal_(m.weight, mean=0, std=embedding_dim ** -0.5)
-    nn.init.constant_(m.weight[padding_idx], 0)
-    return m
