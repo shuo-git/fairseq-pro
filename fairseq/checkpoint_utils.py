@@ -188,20 +188,20 @@ def load_checkpoint(args, trainer, **passthrough_args):
 
         wte_ph = Embedding(len(trainer.task.dictionary), hidden_size, padding_idx=1)
         gpt2_wte = named_parameters["transformer.wte.weight"]
-        wte_ph.weight[0, :] = gpt2_wte[gpt2_vocab_size - 1, :]
-        wte_ph.weight[2, :] = gpt2_wte[gpt2_vocab_size - 1, :]
-        wte_ph.weight[3, :] = gpt2_wte[gpt2_vocab_size - 1, :]
-        wte_ph.weight[4: gpt2_vocab_size + 4, :] = gpt2_wte
+        wte_ph.weight.data[0, :] = gpt2_wte.data[gpt2_vocab_size - 1, :]
+        wte_ph.weight.data[2, :] = gpt2_wte.data[gpt2_vocab_size - 1, :]
+        wte_ph.weight.data[3, :] = gpt2_wte.data[gpt2_vocab_size - 1, :]
+        wte_ph.weight.data[4: gpt2_vocab_size + 4, :] = gpt2_wte.data
         gpt2_state_dict = {}
         gpt2_state_dict["decoder.model.transformer.wte.weight"] = wte_ph.weight.data
 
         gpt2_output_proj = gpt2.lm_head.weight
         output_proj_ph = nn.Linear(hidden_size, len(trainer.task.dictionary), bias=False)
         nn.init.normal_(output_proj_ph.weight, mean=0, std=0.02)
-        output_proj_ph.weight[0, :] = gpt2_output_proj[gpt2_vocab_size - 1, :]
-        output_proj_ph.weight[2, :] = gpt2_output_proj[gpt2_vocab_size - 1, :]
-        output_proj_ph.weight[3, :] = gpt2_output_proj[gpt2_vocab_size - 1, :]
-        output_proj_ph.weight[4: gpt2_vocab_size + 4, :] = gpt2_output_proj
+        output_proj_ph.weight.data[0, :] = gpt2_output_proj.data[gpt2_vocab_size - 1, :]
+        output_proj_ph.weight.data[2, :] = gpt2_output_proj.data[gpt2_vocab_size - 1, :]
+        output_proj_ph.weight.data[3, :] = gpt2_output_proj.data[gpt2_vocab_size - 1, :]
+        output_proj_ph.weight.data[4: gpt2_vocab_size + 4, :] = gpt2_output_proj.data
         gpt2_state_dict["decoder.model.lm_head.weight"] = output_proj_ph.weight.data
 
         gpt2_wpe = named_parameters["transformer.wpe.weight"]

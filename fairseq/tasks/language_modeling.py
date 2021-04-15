@@ -312,7 +312,7 @@ class LanguageModelingTask(FairseqTask):
             # pass the `prefix_tokens` argument instead
             if prefix_tokens is None and sample["net_input"]["src_tokens"].nelement():
                 prefix_tokens = sample["net_input"]["src_tokens"]
-                if sample["net_input"]["src_wil"] is not None:
+                if "src_wil" in sample["net_input"].keys():
                     prefix_wil = sample["net_input"]["src_wil"]
                     assert prefix_tokens.shape == prefix_wil.shape
                 else:
