@@ -204,8 +204,18 @@ class TranslationTask(LegacyFairseqTask):
                                  'e.g., \'{"beam": 4, "lenpen": 0.6}\'')
         parser.add_argument('--eval-bleu-print-samples', action='store_true',
                             help='print sample generations during validation')
+        parser.add_argument('--load-word-int-label', action='store_true',
+                            help='load word int label file')
         parser.add_argument('--language-embedding-num', default=0, type=int, metavar='N',
                             help='number of language embeddings')
+        parser.add_argument('--use-learned-language-embedding', action='store_true',
+                            help='if True, use learned language embeddings')
+        parser.add_argument('--load-hf-gpt2', action='store_true',
+                            help='if True, load pre-trained gpt2 from huggingface')
+        parser.add_argument('--load-hf-gpt2-to-fairseq', action='store_true',
+                            help='if True, load pre-trained gpt2 from huggingface')
+        parser.add_argument('--gpt2-setting', default='base',
+                            choices=['base', 'medium', 'large', 'xlarge'])
         # fmt: on
 
     def __init__(self, args, src_dict, tgt_dict):
