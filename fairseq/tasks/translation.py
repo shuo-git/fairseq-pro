@@ -204,6 +204,8 @@ class TranslationTask(LegacyFairseqTask):
                                  'e.g., \'{"beam": 4, "lenpen": 0.6}\'')
         parser.add_argument('--eval-bleu-print-samples', action='store_true',
                             help='print sample generations during validation')
+        parser.add_argument('--language-embedding-num', default=0, type=int, metavar='N',
+                            help='number of language embeddings')
         # fmt: on
 
     def __init__(self, args, src_dict, tgt_dict):
