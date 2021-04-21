@@ -33,6 +33,28 @@ from fairseq.tasks import FairseqTask, register_task
 logger = logging.getLogger(__name__)
 
 
+def parse_lambda_config(x):
+    """
+    Parse the configuration of lambda coefficient (for scheduling).
+    x = "3"                  # lambda will be a constant equal to x
+    x = "0:1,1000:0"         # lambda will start from 1 and linearly decrease
+                             # to 0 during the first 1000 iterations
+    x = "0:0,1000:0,2000:1"  # lambda will be equal to 0 for the first 1000
+                             # iterations, then will linearly increase to 1 until iteration 2000
+    """
+    if x is None:
+        return None, None
+    split = x.split(',')
+    if len(split) == 1:
+        return float(x), None
+    else:
+        split = [s.split(os.pathsep) for s in split]
+        assert all(len(s) == 2 for s in split)
+        assert all(k.isdigit() for k, _ in split)
+        assert all(int(split[i][0]) < int(split[i + 1][0]) for i in range(len(split) - 1))
+        return float(split[0][1]), [(int(k), float(v)) for k, v in split]
+
+
 @register_task("language_modeling")
 class LanguageModelingTask(FairseqTask):
     """
@@ -107,12 +129,19 @@ class LanguageModelingTask(FairseqTask):
                             help='if True, load pre-trained gpt2 from huggingface')
         parser.add_argument('--gpt2-setting', default='base',
                             choices=['base', 'medium', 'large', 'xlarge'])
+        parser.add_argument('--lambda-autoencoding-config', default=None, type=str, metavar='CONFIG',
+                            help='Autoencoding loss coefficient'
+                                 'use fixed weight during training if set to floating point number. '
+                                 'use piecewise linear function over number of updates to schedule the '
+                                 'weight with the format: step0:w0,step1:w1,...')
         # fmt: on
 
     def __init__(self, args, dictionary, output_dictionary=None, targets=None):
         super().__init__(args)
         self.dictionary = dictionary
         self.output_dictionary = output_dictionary or dictionary
+
+        self.lambda_autoencoding, self.lambda_autoencoding_steps = parse_lambda_config(args.lambda_autoencoding_config)
 
         if targets is None:
             targets = ["future"]
@@ -296,6 +325,69 @@ class LanguageModelingTask(FairseqTask):
             },
             sizes=[np.array(src_lengths)],
         )
+
+    def train_step(
+        self, sample, model, criterion, optimizer, update_num, ignore_grad=False
+    ):
+        """
+        Do forward and backward, and return the loss as computed by *criterion*
+        for the given *model* and *sample*.
+
+        Args:
+            sample (dict): the mini-batch. The format is defined by the
+                :class:`~fairseq.data.FairseqDataset`.
+            model (~fairseq.models.BaseFairseqModel): the model
+            criterion (~fairseq.criterions.FairseqCriterion): the criterion
+            optimizer (~fairseq.optim.FairseqOptimizer): the optimizer
+            update_num (int): the current update
+            ignore_grad (bool): multiply loss by 0 if this is set to True
+
+        Returns:
+            tuple:
+                - the loss
+                - the sample size, which is used as the denominator for the
+                  gradient
+                - logging outputs to display while training
+        """
+
+        def lambda_step_func(config, n_iter):
+            """
+            Update a lambda value according to its schedule configuration.
+            """
+            ranges = [i for i in range(len(config) - 1) if config[i][0] <= n_iter < config[i + 1][0]]
+            if len(ranges) == 0:
+                assert n_iter >= config[-1][0]
+                return config[-1][1]
+            assert len(ranges) == 1
+            i = ranges[0]
+            x_a, y_a = config[i]
+            x_b, y_b = config[i + 1]
+            return y_a + (n_iter - x_a) * float(y_b - y_a) / float(x_b - x_a)
+        
+        model.train()
+        model.set_num_updates(update_num)
+
+        if self.lambda_autoencoding_steps is None:
+            lambda_autoencoding = self.lambda_autoencoding
+        else:
+            lambda_autoencoding = lambda_step_func(self.lambda_autoencoding_steps, update_num)
+        
+        if lambda_autoencoding is None:
+            lambda_translation = None
+        else:
+            lambda_translation = 2.0 - lambda_autoencoding
+
+        with torch.autograd.profiler.record_function("forward"):
+            if lambda_autoencoding is None:
+                loss, sample_size, logging_output = criterion(model, sample)
+            else:
+                loss, sample_size, logging_output = criterion(model, sample,
+                                                              ls_seg_weights=[lambda_autoencoding, lambda_translation])
+        if ignore_grad:
+            loss *= 0
+        with torch.autograd.profiler.record_function("backward"):
+            optimizer.backward(loss)
+        return loss, sample_size, logging_output
 
     def inference_step(self, generator, models, sample, prefix_tokens=None, constraints=None):
         with torch.no_grad():
