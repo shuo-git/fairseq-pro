@@ -52,7 +52,7 @@ class LabelSmoothedCrossEntropyCriterionSplit(FairseqCriterion):
         self.eps = label_smoothing
         self.ls_seg_indices = ls_segment_indices
         self.ls_seg_weights = ls_segment_weights
-        self.ls_seg_weights_orig = ls_seg_weights
+        self.ls_seg_weights_orig = ls_segment_weights
 
     @staticmethod
     def add_args(parser):
