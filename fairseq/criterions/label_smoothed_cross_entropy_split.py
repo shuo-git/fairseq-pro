@@ -52,6 +52,7 @@ class LabelSmoothedCrossEntropyCriterionSplit(FairseqCriterion):
         self.eps = label_smoothing
         self.ls_seg_indices = ls_segment_indices
         self.ls_seg_weights = ls_segment_weights
+        self.ls_seg_weights_orig = ls_seg_weights
 
     @staticmethod
     def add_args(parser):
@@ -66,7 +67,6 @@ class LabelSmoothedCrossEntropyCriterionSplit(FairseqCriterion):
         # fmt: on
 
     def forward(self, model, sample, reduce=True,
-                ls_seg_indices=None,
                 ls_seg_weights=None):
         """Compute the loss for the given sample.
 
@@ -75,10 +75,8 @@ class LabelSmoothedCrossEntropyCriterionSplit(FairseqCriterion):
         2) the sample size, which is used as the denominator for the gradient
         3) logging outputs to display while training
         """
-        if ls_seg_indices is not None:
-            self.ls_seg_indices = ls_seg_indices
         if ls_seg_weights is not None:
-            self.ls_seg_weights = ls_seg_weights
+            self.ls_seg_weights = [x * y for x, y in zip(self.ls_seg_weights_orig, ls_seg_weights)]
 
         net_output = model(**sample['net_input'])
         loss, nll_loss = self.compute_loss(model, net_output, sample, reduce=reduce)
