@@ -253,6 +253,9 @@ def get_parser(desc, default_task="translation"):
     parser.add_argument('--task', metavar='TASK', default=default_task,
                         choices=TASK_REGISTRY.keys(),
                         help='task')
+    # By Shuo
+    parser.add_argument('--segment-embed-mod', type=int, metavar='N',
+                        default=100)
     # fmt: on
     return parser
 

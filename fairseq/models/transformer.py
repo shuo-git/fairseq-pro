@@ -750,6 +750,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                     ending_wil = prev_output_wil[:, -1:]
                     prev_output_wil = torch.cat([prev_output_wil] + [ending_wil] * (tok_length - wil_length), dim=1)
             # Step2: padding wil
+            prev_output_wil = prev_output_wil % self.args.segment_embed_mod
             prev_output_wil[prev_output_tokens == self.padding_idx] = self.args.language_embedding_num
 
         # embed positions
