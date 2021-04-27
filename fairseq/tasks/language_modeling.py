@@ -375,7 +375,7 @@ class LanguageModelingTask(FairseqTask):
         if lambda_autoencoding is None:
             lambda_translation = None
         else:
-            lambda_translation = 1.0
+            lambda_translation = 2.0 - lambda_autoencoding
 
         with torch.autograd.profiler.record_function("forward"):
             if lambda_autoencoding is None:
