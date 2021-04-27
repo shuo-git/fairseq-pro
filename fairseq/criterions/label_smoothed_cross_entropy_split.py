@@ -46,12 +46,14 @@ def label_smoothed_nll_loss(lprobs, target, epsilon, ignore_index=None, reduce=T
 class LabelSmoothedCrossEntropyCriterionSplit(FairseqCriterion):
 
     def __init__(self, task, sentence_avg, label_smoothing,
-                 ls_segment_indices, ls_segment_weights):
+                 ls_segment_indices, ls_segment_decay):
         super().__init__(task)
         self.sentence_avg = sentence_avg
         self.eps = label_smoothing
         self.ls_seg_indices = ls_segment_indices
-        self.ls_seg_weights = ls_segment_weights
+        self.ls_seg_decay = ls_segment_decay
+        assert len(self.ls_seg_indices) == len(self.ls_seg_decay)
+        self.ls_seg_weights = [1.0 for _ in self.ls_seg_indices]
 
     @staticmethod
     def add_args(parser):
@@ -61,13 +63,12 @@ class LabelSmoothedCrossEntropyCriterionSplit(FairseqCriterion):
                             help='epsilon for label smoothing, 0 means no label smoothing')
         parser.add_argument('--ls-segment-indices', type=int, nargs='*',
                             help='indices of the segments')
-        parser.add_argument('--ls-segment-weights', type=float, nargs='*',
+        parser.add_argument('--ls-segment-decay', type=int, nargs='*',
                             help='weights of the segments')
         # fmt: on
 
     def forward(self, model, sample, reduce=True,
-                ls_seg_indices=None,
-                ls_seg_weights=None):
+                lambda_decay=None):
         """Compute the loss for the given sample.
 
         Returns a tuple with three elements:
@@ -75,10 +76,8 @@ class LabelSmoothedCrossEntropyCriterionSplit(FairseqCriterion):
         2) the sample size, which is used as the denominator for the gradient
         3) logging outputs to display while training
         """
-        if ls_seg_indices is not None:
-            self.ls_seg_indices = ls_seg_indices
-        if ls_seg_weights is not None:
-            self.ls_seg_weights = ls_seg_weights
+        if lambda_decay is not None:
+            self.ls_seg_weights = [lambda_decay if di == 1 else 2.0 - lambda_decay for di in self.ls_seg_decay]
 
         net_output = model(**sample['net_input'])
         loss, nll_loss = self.compute_loss(model, net_output, sample, reduce=reduce)

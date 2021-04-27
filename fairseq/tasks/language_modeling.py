@@ -371,18 +371,12 @@ class LanguageModelingTask(FairseqTask):
             lambda_autoencoding = self.lambda_autoencoding
         else:
             lambda_autoencoding = lambda_step_func(self.lambda_autoencoding_steps, update_num)
-        
-        if lambda_autoencoding is None:
-            lambda_translation = None
-        else:
-            lambda_translation = 2.0 - lambda_autoencoding
 
         with torch.autograd.profiler.record_function("forward"):
             if lambda_autoencoding is None:
                 loss, sample_size, logging_output = criterion(model, sample)
             else:
-                loss, sample_size, logging_output = criterion(model, sample,
-                                                              ls_seg_weights=[lambda_autoencoding, lambda_translation])
+                loss, sample_size, logging_output = criterion(model, sample, lambda_decay=lambda_autoencoding)
         if ignore_grad:
             loss *= 0
         with torch.autograd.profiler.record_function("backward"):
