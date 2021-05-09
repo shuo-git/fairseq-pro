@@ -86,7 +86,8 @@ class TransformerEncoderLayer(nn.Module):
                     state_dict["{}.{}.{}".format(name, new, m)] = state_dict[k]
                     del state_dict[k]
 
-    def forward(self, x, encoder_padding_mask, attn_mask: Optional[Tensor] = None):
+    def forward(self, x, encoder_padding_mask, attn_mask: Optional[Tensor] = None,
+                attn_repeat: Optional[int] = 1):
         """
         Args:
             x (Tensor): input to the layer of shape `(seq_len, batch, embed_dim)`
@@ -110,20 +111,21 @@ class TransformerEncoderLayer(nn.Module):
         if attn_mask is not None:
             attn_mask = attn_mask.masked_fill(attn_mask.to(torch.bool), -1e8)
 
-        residual = x
-        if self.normalize_before:
-            x = self.self_attn_layer_norm(x)
-        x, _ = self.self_attn(
-            query=x,
-            key=x,
-            value=x,
-            key_padding_mask=encoder_padding_mask,
-            attn_mask=attn_mask,
-        )
-        x = self.dropout_module(x)
-        x = residual + x
-        if not self.normalize_before:
-            x = self.self_attn_layer_norm(x)
+        for _ in range(attn_repeat):
+            residual = x
+            if self.normalize_before:
+                x = self.self_attn_layer_norm(x)
+            x, _ = self.self_attn(
+                query=x,
+                key=x,
+                value=x,
+                key_padding_mask=encoder_padding_mask,
+                attn_mask=attn_mask,
+            )
+            x = self.dropout_module(x)
+            x = residual + x
+            if not self.normalize_before:
+                x = self.self_attn_layer_norm(x)
 
         residual = x
         if self.normalize_before:

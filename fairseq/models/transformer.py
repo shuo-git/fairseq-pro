@@ -117,6 +117,10 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='apply layernorm before each encoder block')
         parser.add_argument('--encoder-learned-pos', action='store_true',
                             help='use learned positional embeddings in the encoder')
+        parser.add_argument('--encoder-causal-attention', action='store_true',
+                            help='use causal attention in the encoder')
+        parser.add_argument('--encoder-repeat-attention', type=int, default=1,metavar='N',
+                            help='repeat times for encoder attention')
         parser.add_argument('--decoder-embed-path', type=str, metavar='STR',
                             help='path to pre-trained decoder embedding')
         parser.add_argument('--decoder-embed-dim', type=int, metavar='N',
@@ -357,6 +361,10 @@ class TransformerEncoder(FairseqEncoder):
             self.layer_norm = LayerNorm(embed_dim)
         else:
             self.layer_norm = None
+        
+        self.encoder_causal_attention = args.encoder_causal_attention
+        self.encoder_repeat_attention = args.encoder_repeat_attention
+        self._future_mask = torch.empty(0)
 
     def build_encoder_layer(self, args):
         return TransformerEncoderLayer(args)
@@ -407,7 +415,13 @@ class TransformerEncoder(FairseqEncoder):
 
         # encoder layers
         for layer in self.layers:
-            x = layer(x, encoder_padding_mask)
+            if self.encoder_causal_attention:
+                self_attn_mask = self.buffered_future_mask(x)
+            else:
+                self_attn_mask = None
+            x = layer(x, encoder_padding_mask,
+                      attn_mask=self_attn_mask,
+                      attn_repeat=self.encoder_repeat_attention)
             if return_all_hiddens:
                 assert encoder_states is not None
                 encoder_states.append(x)
@@ -510,6 +524,20 @@ class TransformerEncoder(FairseqEncoder):
             self.normalize = False
             state_dict[version_key] = torch.Tensor([1])
         return state_dict
+    
+    def buffered_future_mask(self, tensor):
+        dim = tensor.size(0)
+        # self._future_mask.device != tensor.device is not working in TorchScript. This is a workaround.
+        if (
+            self._future_mask.size(0) == 0
+            or (not self._future_mask.device == tensor.device)
+            or self._future_mask.size(0) < dim
+        ):
+            self._future_mask = torch.triu(
+                torch.ones([dim, dim]), 1
+            )
+        self._future_mask = self._future_mask.to(tensor)
+        return self._future_mask[:dim, :dim]
 
 
 class TransformerDecoder(FairseqIncrementalDecoder):
