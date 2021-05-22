@@ -50,8 +50,10 @@ class LabelSmoothedCrossEntropyCriterionSplit(FairseqCriterion):
         super().__init__(task)
         self.sentence_avg = sentence_avg
         self.eps = label_smoothing
-        self.ls_seg_indices = ls_segment_indices
-        self.ls_seg_decay = ls_segment_decay
+        ls_seg_indices = ls_segment_indices.split(',')
+        self.ls_seg_indices = [int(x) for x in ls_seg_indices]
+        ls_seg_decay = ls_segment_decay.split(',')
+        self.ls_seg_decay = [float(x) for x in ls_seg_decay]
         assert len(self.ls_seg_indices) == len(self.ls_seg_decay)
         self.ls_seg_weights = [1.0 for _ in self.ls_seg_indices]
 
@@ -61,9 +63,9 @@ class LabelSmoothedCrossEntropyCriterionSplit(FairseqCriterion):
         # fmt: off
         parser.add_argument('--label-smoothing', default=0., type=float, metavar='D',
                             help='epsilon for label smoothing, 0 means no label smoothing')
-        parser.add_argument('--ls-segment-indices', type=int, nargs='*',
+        parser.add_argument('--ls-segment-indices', type=str, default='0,1',
                             help='indices of the segments')
-        parser.add_argument('--ls-segment-decay', type=int, nargs='*',
+        parser.add_argument('--ls-segment-decay', type=str, default='1,0',
                             help='weights of the segments')
         # fmt: on
 
