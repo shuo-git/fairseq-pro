@@ -29,6 +29,7 @@ from fairseq.modules import (
 )
 from fairseq.modules.quant_noise import quant_noise as apply_quant_noise_
 from torch import Tensor
+import torch.nn.functional as F
 
 DEFAULT_MAX_SOURCE_POSITIONS = 1024
 DEFAULT_MAX_TARGET_POSITIONS = 1024
@@ -171,6 +172,10 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='block size of quantization noise at training time')
         parser.add_argument('--quant-noise-scalar', type=float, metavar='D', default=0,
                             help='scalar quantization noise and scalar quantization at training time')
+        parser.add_argument('--word-dropout', action='store_true',
+                            help='if True, use word dropout on embedding layer of decoder')
+        parser.add_argument('--word-dropout-prob', type=float, metavar='D', default=0,
+                            help='word dropout probability')
         # fmt: on
 
     @classmethod
@@ -792,7 +797,11 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         if self.layernorm_embedding is not None:
             x = self.layernorm_embedding(x)
 
-        x = self.dropout_module(x)
+        if self.args.word_dropout:
+            if self.training:
+                x = F.dropout2d(x, p=self.args.word_dropout_prob, training=True, inplace=False)
+        else:
+            x = self.dropout_module(x)
 
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
