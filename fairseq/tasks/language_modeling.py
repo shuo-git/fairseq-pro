@@ -134,6 +134,11 @@ class LanguageModelingTask(FairseqTask):
                                  'use fixed weight during training if set to floating point number. '
                                  'use piecewise linear function over number of updates to schedule the '
                                  'weight with the format: step0:w0,step1:w1,...')
+        parser.add_argument('--lambda-pseudo-data-config', default=None, type=str, metavar='CONFIG',
+                            help='Pseudo data loss coefficient'
+                                 'use fixed weight during training if set to floating point number. '
+                                 'use piecewise linear function over number of updates to schedule the '
+                                 'weight with the format: step0:w0,step1:w1,...')
         # fmt: on
 
     def __init__(self, args, dictionary, output_dictionary=None, targets=None):
@@ -142,7 +147,7 @@ class LanguageModelingTask(FairseqTask):
         self.output_dictionary = output_dictionary or dictionary
 
         self.lambda_autoencoding, self.lambda_autoencoding_steps = parse_lambda_config(args.lambda_autoencoding_config)
-
+        self.lambda_pseudodata, self.lambda_pseudodata_steps = parse_lambda_config(args.lambda_pseudo_data_config)
         if targets is None:
             targets = ["future"]
         self.targets = targets
@@ -371,12 +376,19 @@ class LanguageModelingTask(FairseqTask):
             lambda_autoencoding = self.lambda_autoencoding
         else:
             lambda_autoencoding = lambda_step_func(self.lambda_autoencoding_steps, update_num)
+        
+        if self.lambda_pseudodata_steps is None:
+            lambda_pseudodata = self.lambda_pseudodata
+        else:
+            lambda_pseudodata = lambda_step_func(self.lambda_pseudodata_steps, update_num)
 
         with torch.autograd.profiler.record_function("forward"):
             if lambda_autoencoding is None:
                 loss, sample_size, logging_output = criterion(model, sample)
-            else:
+            elif lambda_pseudodata is None:
                 loss, sample_size, logging_output = criterion(model, sample, lambda_decay=lambda_autoencoding)
+            else:
+                loss, sample_size, logging_output = criterion(model, sample, lambda_decay=lambda_autoencoding, lambda_pseudo_decay=lambda_pseudodata)
         if ignore_grad:
             loss *= 0
         with torch.autograd.profiler.record_function("backward"):

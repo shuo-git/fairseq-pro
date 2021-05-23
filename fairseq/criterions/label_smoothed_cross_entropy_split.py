@@ -70,7 +70,7 @@ class LabelSmoothedCrossEntropyCriterionSplit(FairseqCriterion):
         # fmt: on
 
     def forward(self, model, sample, reduce=True,
-                lambda_decay=None):
+                lambda_decay=None, lambda_pseudo_decay=None):
         """Compute the loss for the given sample.
 
         Returns a tuple with three elements:
@@ -78,8 +78,17 @@ class LabelSmoothedCrossEntropyCriterionSplit(FairseqCriterion):
         2) the sample size, which is used as the denominator for the gradient
         3) logging outputs to display while training
         """
-        if lambda_decay is not None:
+        if lambda_decay is not None and lambda_pseudo_decay is None:
             self.ls_seg_weights = [lambda_decay if di == 1 else 2.0 - lambda_decay for di in self.ls_seg_decay]
+        if lambda_decay is not None and lambda_pseudo_decay is not None:
+            ls_seg_weights = []
+            for idx, dflag in zip(self.ls_seg_indices, self.ls_seg_decay):
+                if idx < 50:
+                    temp_weight = lambda_decay if dflag == 1 else 2.0 - lambda_decay
+                else:
+                    temp_weight = lambda_pseudo_decay if dflag == 1 else 2.0 - lambda_pseudo_decay
+                ls_seg_weights.append(temp_weight)
+            self.ls_seg_weights = ls_seg_weights
 
         net_output = model(**sample['net_input'])
         loss, nll_loss = self.compute_loss(model, net_output, sample, reduce=reduce)
