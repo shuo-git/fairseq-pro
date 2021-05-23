@@ -122,7 +122,7 @@ class TransformerLanguageModel(FairseqLanguageModel):
                             help='block size of quantization noise at training time')
         parser.add_argument('--quant-noise-scalar', type=float, metavar='D',
                             help='scalar quantization noise and scalar quantization at training time')
-        parser.add_argument('--word-dropout', action='store_true',
+        parser.add_argument('--word-dropout', action='store_true', default=False,
                             help='if True, use word dropout on embedding layer of decoder')
         parser.add_argument('--word-dropout-prob', type=float, metavar='D', default=0,
                             help='word dropout probability')
