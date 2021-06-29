@@ -821,7 +821,7 @@ class TransformerJointDecoder(FairseqIncrementalDecoder):
             if process_source:
                 if state is None:
                     state = {}
-                source, attn = layer(
+                source, attn, _ = layer(
                     source,
                     incremental_state=state,
                     self_attn_padding_mask=source_padding_mask
