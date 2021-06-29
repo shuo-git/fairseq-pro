@@ -851,14 +851,17 @@ class TransformerJointDecoder(FairseqIncrementalDecoder):
 
         if self.layer_norm is not None:
             x = self.layer_norm(x)
+            source = self.layer_norm(source)
 
         # T x B x C -> B x T x C
         x = x.transpose(0, 1)
+        source = source.transpose(0, 1)
 
         if self.project_out_dim is not None:
             x = self.project_out_dim(x)
+            source = self.project_out_dim(source)
 
-        return x, {"attn": [attn], "inner_states": inner_states}
+        return x, {"attn": [attn], "inner_states": inner_states, "source": source}
 
     def output_layer(self, features):
         """Project features to the vocabulary size."""
