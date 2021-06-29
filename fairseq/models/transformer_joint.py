@@ -244,7 +244,7 @@ class TransformerJointModel(FairseqEncoderDecoderModel):
             args,
             tgt_dict,
             embed_tokens,
-            no_encoder_attn=getattr(args, "no_cross_attention", False),
+            no_encoder_attn=True,
         )
 
     # TorchScript doesn't support optional arguments with variable length (**kwargs).
