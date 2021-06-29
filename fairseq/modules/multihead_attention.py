@@ -246,7 +246,7 @@ class MultiheadAttention(nn.Module):
                 .transpose(0, 1)
             )
 
-        if saved_state is not None and len(saved_state) > 0:
+        if saved_state is not None:
             # saved states are stored with shape (bsz, num_heads, seq_len, head_dim)
             if "prev_key" in saved_state:
                 _prev_key = saved_state["prev_key"]
