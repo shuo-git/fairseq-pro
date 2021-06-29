@@ -795,10 +795,12 @@ class TransformerJointDecoder(FairseqIncrementalDecoder):
         # decoder layers
         attn: Optional[Tensor] = None
         inner_states: List[Optional[Tensor]] = [x]
-        source = encoder_out['encoder_out']
+        # source = encoder_out['encoder_out']
+        source = encoder_out[0]
         process_source = incremental_state is None or len(incremental_state) == 0
         # extended padding mask
-        source_padding_mask = encoder_out['encoder_padding_mask']
+        # source_padding_mask = encoder_out['encoder_padding_mask']
+        source_padding_mask = encoder_out[1]
 
         for idx, layer in enumerate(self.layers):
             if incremental_state is None and not full_context_alignment:
