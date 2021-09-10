@@ -372,14 +372,15 @@ class TransformerEncoder(FairseqEncoder):
         nn.init.constant_(prefix_emb.weight[0], 0)
         return prefix_emb
 
-    def forward_predix_embedding(self, src_tokens):
+    def forward_prefix_embedding(self, src_tokens):
         prefix_tokens = src_tokens * (src_tokens > self.normal_token_threshold) \
                         + (src_tokens <= self.normal_token_threshold) * self.normal_token_threshold \
                         - self.normal_token_threshold
         return self.embed_prefix(prefix_tokens)
 
     def forward_normal_embedding(self, src_tokens):
-        normal_tokens = src_tokens * (src_tokens <= self.normal_token_threshold)
+        normal_tokens = src_tokens * (src_tokens <= self.normal_token_threshold) \
+                        + (src_tokens > self.normal_token_threshold)
         return self.embed_tokens(normal_tokens)
 
     def build_encoder_layer(self, args):
@@ -387,7 +388,7 @@ class TransformerEncoder(FairseqEncoder):
 
     def forward_embedding(self, src_tokens):
         # embed tokens and positions
-        x = embed = self.embed_scale * (self.forward_predix_embedding(src_tokens) + self.forward_normal_embedding(src_tokens))
+        x = embed = self.embed_scale * (self.forward_prefix_embedding(src_tokens) + self.forward_normal_embedding(src_tokens))
         if self.embed_positions is not None:
             x = embed + self.embed_positions(src_tokens)
         if self.layernorm_embedding is not None:
