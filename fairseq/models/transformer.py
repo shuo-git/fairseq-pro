@@ -387,8 +387,8 @@ class TransformerEncoder(FairseqEncoder):
     def forward_embedding(self, src_tokens):
         # embed tokens and positions
         mask_prefix = torch.unsqueeze(src_tokens > self.normal_token_threshold, -1)
-        temp_prefix_embed = torch.unsqueeze(self.forward_prefix_embedding(src_tokens), -1)
-        mask_normal = src_tokens <= self.normal_token_threshold
+        temp_prefix_embed = self.forward_prefix_embedding(src_tokens)
+        mask_normal = torch.unsqueeze(src_tokens <= self.normal_token_threshold, -1)
         temp_normal_embed = self.forward_normal_embedding(src_tokens)
         temp_total_embed = mask_prefix * temp_prefix_embed + mask_normal * temp_normal_embed
         x = embed = self.embed_scale * temp_total_embed
