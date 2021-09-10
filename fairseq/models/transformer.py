@@ -322,7 +322,7 @@ class TransformerEncoder(FairseqEncoder):
 
         self.embed_tokens = embed_tokens
         self.num_predix_tokens = 1000
-        self.normal_token_threshold = self.embed_tokens.weight.shape[0] - self.num_predix_tokens
+        self.normal_token_threshold = self.embed_tokens.weight.shape[0] - self.num_predix_tokens - 1
         self.embed_prefix = self.build_prefix(args, self.num_predix_tokens, embed_dim)
 
         self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
