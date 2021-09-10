@@ -323,7 +323,7 @@ class TransformerEncoder(FairseqEncoder):
         self.embed_tokens = embed_tokens
         self.num_predix_tokens = 1000
         self.normal_token_threshold = self.embed_tokens.weight.shape[0] - self.num_predix_tokens
-        self.embed_prefix = cls.build_prefix(args, self.num_predix_tokens, embed_dim)
+        self.embed_prefix = self.build_prefix(args, self.num_predix_tokens, embed_dim)
 
         self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
 
@@ -366,8 +366,7 @@ class TransformerEncoder(FairseqEncoder):
         else:
             self.layer_norm = None
 
-    @classmethod
-    def build_prefix(cls, args, num_embed, embed_dim):
+    def build_prefix(self, args, num_embed, embed_dim):
         prefix_emb = nn.Embedding(num_embed + 1, embed_dim, padding_idx=0)
         nn.init.normal_(prefix_emb.weight, mean=0, std=embed_dim ** -0.5)
         nn.init.constant_(prefix_emb.weight[0], 0)
