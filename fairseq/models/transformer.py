@@ -379,16 +379,19 @@ class TransformerEncoder(FairseqEncoder):
         return self.embed_prefix(prefix_tokens)
 
     def forward_normal_embedding(self, src_tokens):
-        normal_tokens = src_tokens * (src_tokens <= self.normal_token_threshold) \
-                        + (src_tokens > self.normal_token_threshold)
-        return self.embed_tokens(normal_tokens)
+        return self.embed_tokens(src_tokens)
 
     def build_encoder_layer(self, args):
         return TransformerEncoderLayer(args)
 
     def forward_embedding(self, src_tokens):
         # embed tokens and positions
-        x = embed = self.embed_scale * (self.forward_prefix_embedding(src_tokens) + self.forward_normal_embedding(src_tokens))
+        mask_prefix = torch.unsqueeze(src_tokens > self.normal_token_threshold, -1)
+        temp_prefix_embed = torch.unsqueeze(self.forward_prefix_embedding(src_tokens), -1)
+        mask_normal = src_tokens <= self.normal_token_threshold
+        temp_normal_embed = self.forward_normal_embedding(src_tokens)
+        temp_total_embed = mask_prefix * temp_prefix_embed + mask_normal * temp_normal_embed
+        x = embed = self.embed_scale * temp_total_embed
         if self.embed_positions is not None:
             x = embed + self.embed_positions(src_tokens)
         if self.layernorm_embedding is not None:
