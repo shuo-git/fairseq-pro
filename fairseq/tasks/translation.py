@@ -224,8 +224,8 @@ class TranslationTask(LegacyFairseqTask):
                             help='if True, load pre-trained gpt2 from huggingface')
         parser.add_argument('--gpt2-setting', default='base',
                             choices=['base', 'medium', 'large', 'xlarge'])
-        parser.add_argument('--source-word-int-label')
-        parser.add_argument('--target-word-int-label')
+        parser.add_argument('--source-word-int-label', action='store_true', default='False')
+        parser.add_argument('--target-word-int-label', action='store_true', default='False')
         # fmt: on
 
     def __init__(self, args, src_dict, tgt_dict):
@@ -290,7 +290,7 @@ class TranslationTask(LegacyFairseqTask):
             truncate_source=self.args.truncate_source,
             num_buckets=self.args.num_batch_buckets,
             shuffle=(split != 'test'),
-            target_word_int_label=self.args.target_word_int_label if split == 'train' else None,
+            target_word_int_label=self.args.target_word_int_label if split == 'train' else False,
         )
 
     def build_dataset_for_inference(self, src_tokens, src_lengths, constraints=None):
