@@ -48,9 +48,9 @@ class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
         self.eps = label_smoothing
         ls_seg_indices = ls_segment_indices.split(',')
         self.ls_seg_indices = [int(x) for x in ls_seg_indices]
-        ls_segment_weights = ls_segment_weights.split(',')
-        self.ls_segment_weights = [float(x) for x in ls_segment_weights]
-        assert len(self.ls_seg_indices) == len(self.ls_segment_weights)
+        ls_seg_weights = ls_segment_weights.split(',')
+        self.ls_seg_weights = [float(x) for x in ls_seg_weights]
+        assert len(self.ls_seg_indices) == len(self.ls_seg_weights)
 
     @staticmethod
     def add_args(parser):
