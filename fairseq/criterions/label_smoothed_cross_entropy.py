@@ -9,11 +9,20 @@ from fairseq import metrics, utils
 from fairseq.criterions import FairseqCriterion, register_criterion
 
 
-def label_smoothed_nll_loss(lprobs, target, epsilon, ignore_index=None, reduce=True):
+def label_smoothed_nll_loss(lprobs, target, epsilon, ignore_index=None, reduce=True,
+                            tgt_wil=None, seg_indices=None, seg_weights=None):
     if target.dim() == lprobs.dim() - 1:
         target = target.unsqueeze(-1)
     nll_loss = -lprobs.gather(dim=-1, index=target)
     smooth_loss = -lprobs.sum(dim=-1, keepdim=True)
+    if tgt_wil is not None and seg_indices is not None and seg_weights is not None:
+        loss_weights = torch.ones_like(nll_loss)
+        assert len(seg_indices) == len(seg_weights)
+        for seg_i, seg_w in zip(seg_indices, seg_weights):
+            seg_mask = tgt_wil.eq(seg_i)
+            loss_weights.masked_fill_(seg_mask, seg_w)
+        nll_loss *= loss_weights
+        smooth_loss *= loss_weights
     if ignore_index is not None:
         pad_mask = target.eq(ignore_index)
         nll_loss.masked_fill_(pad_mask, 0.)
@@ -32,10 +41,16 @@ def label_smoothed_nll_loss(lprobs, target, epsilon, ignore_index=None, reduce=T
 @register_criterion('label_smoothed_cross_entropy')
 class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
 
-    def __init__(self, task, sentence_avg, label_smoothing):
+    def __init__(self, task, sentence_avg, label_smoothing,
+                 ls_segment_indices, ls_segment_weights):
         super().__init__(task)
         self.sentence_avg = sentence_avg
         self.eps = label_smoothing
+        ls_seg_indices = ls_segment_indices.split(',')
+        self.ls_seg_indices = [int(x) for x in ls_seg_indices]
+        ls_segment_weights = ls_segment_weights.split(',')
+        self.ls_segment_weights = [float(x) for x in ls_segment_weights]
+        assert len(self.ls_seg_indices) == len(self.ls_segment_weights)
 
     @staticmethod
     def add_args(parser):
@@ -43,6 +58,10 @@ class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
         # fmt: off
         parser.add_argument('--label-smoothing', default=0., type=float, metavar='D',
                             help='epsilon for label smoothing, 0 means no label smoothing')
+        parser.add_argument('--ls-segment-indices', type=str, default='0,1',
+                            help='indices of the segments')
+        parser.add_argument('--ls-segment-weights', type=str, default='0,1',
+                            help='weights of the segments')
         # fmt: on
 
     def forward(self, model, sample, reduce=True):
@@ -70,8 +89,10 @@ class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
         lprobs = model.get_normalized_probs(net_output, log_probs=True)
         lprobs = lprobs.view(-1, lprobs.size(-1))
         target = model.get_targets(sample, net_output).view(-1, 1)
+        target_wil = sample['target_wil'].view(-1, 1)
         loss, nll_loss = label_smoothed_nll_loss(
             lprobs, target, self.eps, ignore_index=self.padding_idx, reduce=reduce,
+            tgt_wil=target_wil,seg_indices=self.ls_seg_indices,seg_weights=self.ls_seg_weights,
         )
         return loss, nll_loss
 
