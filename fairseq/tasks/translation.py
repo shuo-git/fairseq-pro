@@ -42,6 +42,7 @@ def load_langpair_dataset(
     truncate_source=False, append_source_id=False,
     num_buckets=0,
     shuffle=True,
+    target_word_int_label=None,
 ):
 
     def split_exists(split, src, tgt, lang, data_path):
@@ -66,14 +67,14 @@ def load_langpair_dataset(
                 raise FileNotFoundError('Dataset not found: {} ({})'.format(split, data_path))
 
         src_dataset = data_utils.load_indexed_dataset(prefix + src, src_dict, dataset_impl)
-        if truncate_source:
-            src_dataset = AppendTokenDataset(
-                TruncateDataset(
-                    StripTokenDataset(src_dataset, src_dict.eos()),
-                    max_source_positions - 1,
-                ),
-                src_dict.eos(),
-            )
+        # if truncate_source:
+        #     src_dataset = AppendTokenDataset(
+        #         TruncateDataset(
+        #             StripTokenDataset(src_dataset, src_dict.eos()),
+        #             max_source_positions - 1,
+        #         ),
+        #         src_dict.eos(),
+        #     )
         src_datasets.append(src_dataset)
 
         tgt_dataset = data_utils.load_indexed_dataset(prefix + tgt, tgt_dict, dataset_impl)
@@ -120,6 +121,12 @@ def load_langpair_dataset(
         if indexed_dataset.dataset_exists(align_path, impl=dataset_impl):
             align_dataset = data_utils.load_indexed_dataset(align_path, None, dataset_impl)
 
+    target_wil_dataset = None
+    if target_word_int_label:
+        target_wil_path = os.path.join(data_path, '{}-word-int-label.{}-{}.{}'.format(split, src, tgt, tgt))
+        if indexed_dataset.dataset_exists(target_wil_path, impl=dataset_impl):
+            target_wil_dataset = data_utils.load_indexed_dataset(target_wil_path, None, dataset_impl)
+
     tgt_dataset_sizes = tgt_dataset.sizes if tgt_dataset is not None else None
     return LanguagePairDataset(
         src_dataset, src_dataset.sizes, src_dict,
@@ -129,6 +136,7 @@ def load_langpair_dataset(
         align_dataset=align_dataset, eos=eos,
         num_buckets=num_buckets,
         shuffle=shuffle,
+        target_wil_dataset=target_wil_dataset,
     )
 
 
@@ -216,6 +224,8 @@ class TranslationTask(LegacyFairseqTask):
                             help='if True, load pre-trained gpt2 from huggingface')
         parser.add_argument('--gpt2-setting', default='base',
                             choices=['base', 'medium', 'large', 'xlarge'])
+        parser.add_argument('--source-word-int-label')
+        parser.add_argument('--target-word-int-label')
         # fmt: on
 
     def __init__(self, args, src_dict, tgt_dict):
@@ -280,6 +290,7 @@ class TranslationTask(LegacyFairseqTask):
             truncate_source=self.args.truncate_source,
             num_buckets=self.args.num_batch_buckets,
             shuffle=(split != 'test'),
+            target_word_int_label=self.args.target_word_int_label,
         )
 
     def build_dataset_for_inference(self, src_tokens, src_lengths, constraints=None):

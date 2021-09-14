@@ -33,6 +33,13 @@ def collate(
             pad_to_length=pad_to_length,
         )
 
+    def merge_wil(key, left_pad, move_eos_to_beginning=False, pad_to_length=None):
+        return data_utils.collate_tokens(
+            [s[key] for s in samples],
+            0, 0, left_pad, move_eos_to_beginning,
+            pad_to_length=pad_to_length,
+        )
+
     def check_alignment(alignment, src_len, tgt_len):
         if alignment is None or len(alignment) == 0:
             return False
@@ -70,6 +77,7 @@ def collate(
 
     prev_output_tokens = None
     target = None
+    target_wil = None
     if samples[0].get('target', None) is not None:
         target = merge(
             'target', left_pad=left_pad_target,
@@ -80,6 +88,9 @@ def collate(
             s['target'].ne(pad_idx).long().sum() for s in samples
         ]).index_select(0, sort_order)
         ntokens = tgt_lengths.sum().item()
+
+        if samples[0].get('target_wil', None) is not None:
+            target_wil = merge_wil('target_wil', left_pad=left_pad_target)
 
         if samples[0].get('prev_output_tokens', None) is not None:
             prev_output_tokens = merge('prev_output_tokens', left_pad=left_pad_target)
@@ -107,6 +118,8 @@ def collate(
     }
     if prev_output_tokens is not None:
         batch['net_input']['prev_output_tokens'] = prev_output_tokens.index_select(0, sort_order)
+    if target_wil is not None:
+        batch['target_wil'] = target_wil.index_select(0, sort_order)
 
     if samples[0].get('alignment', None) is not None:
         bsz, tgt_sz = batch['target'].shape
@@ -197,6 +210,7 @@ class LanguagePairDataset(FairseqDataset):
         num_buckets=0,
         src_lang_id=None,
         tgt_lang_id=None,
+        target_wil_dataset=None,
     ):
         if tgt_dict is not None:
             assert src_dict.pad() == tgt_dict.pad()
@@ -220,6 +234,9 @@ class LanguagePairDataset(FairseqDataset):
         self.align_dataset = align_dataset
         if self.align_dataset is not None:
             assert self.tgt_sizes is not None, "Both source and target needed when alignments are provided"
+        self.target_wil_dataset = target_wil_dataset
+        if self.target_wil_dataset is not None:
+            assert self.tgt_sizes is not None, "Target needed when target_wil_dataset is provided"
         self.constraints = constraints
         self.append_bos = append_bos
         self.eos = (eos if eos is not None else src_dict.eos())
@@ -296,6 +313,8 @@ class LanguagePairDataset(FairseqDataset):
             example['alignment'] = self.align_dataset[index]
         if self.constraints is not None:
             example["constraints"] = self.constraints[index]
+        if self.target_wil_dataset is not None:
+            example['target_wil'] = self.target_wil_dataset[index]
         return example
 
     def __len__(self):
@@ -403,6 +422,8 @@ class LanguagePairDataset(FairseqDataset):
             self.tgt.prefetch(indices)
         if self.align_dataset is not None:
             self.align_dataset.prefetch(indices)
+        if self.target_wil_dataset is not None:
+            self.target_wil_dataset.prefetch(indices)
 
     def filter_indices_by_size(self, indices, max_sizes):
         """ Filter a list of sample indices. Remove those that are longer
