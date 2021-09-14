@@ -17,14 +17,14 @@ def label_smoothed_nll_loss(lprobs, target, epsilon, ignore_index=None, reduce=T
         target = target.unsqueeze(-1)
     nll_loss = -lprobs.gather(dim=-1, index=target)
     smooth_loss = -lprobs.sum(dim=-1, keepdim=True)
-    if tgt_wil is not None and seg_indices is not None and seg_weights is not None:
-        loss_weights = torch.ones_like(nll_loss)
-        assert len(seg_indices) == len(seg_weights)
-        for seg_i, seg_w in zip(seg_indices, seg_weights):
-            seg_mask = tgt_wil.eq(seg_i)
-            loss_weights.masked_fill_(seg_mask, seg_w)
-        nll_loss *= loss_weights
-        smooth_loss *= loss_weights
+    # if tgt_wil is not None and seg_indices is not None and seg_weights is not None:
+    #     loss_weights = torch.ones_like(nll_loss)
+    #     assert len(seg_indices) == len(seg_weights)
+    #     for seg_i, seg_w in zip(seg_indices, seg_weights):
+    #         seg_mask = tgt_wil.eq(seg_i)
+    #         loss_weights.masked_fill_(seg_mask, seg_w)
+    #     nll_loss *= loss_weights
+    #     smooth_loss *= loss_weights
     if ignore_index is not None:
         pad_mask = target.eq(ignore_index)
         nll_loss.masked_fill_(pad_mask, 0.)
