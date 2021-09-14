@@ -5,6 +5,8 @@
 
 import math
 
+import torch
+
 from fairseq import metrics, utils
 from fairseq.criterions import FairseqCriterion, register_criterion
 
