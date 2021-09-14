@@ -290,7 +290,7 @@ class TranslationTask(LegacyFairseqTask):
             truncate_source=self.args.truncate_source,
             num_buckets=self.args.num_batch_buckets,
             shuffle=(split != 'test'),
-            target_word_int_label=self.args.target_word_int_label,
+            target_word_int_label=self.args.target_word_int_label if split == 'train' else None,
         )
 
     def build_dataset_for_inference(self, src_tokens, src_lengths, constraints=None):
