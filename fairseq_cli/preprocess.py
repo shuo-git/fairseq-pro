@@ -236,6 +236,9 @@ def main(args):
             input_prefix, ("." + lang) if lang is not None else ""
         )
 
+        if not os.path.exists(input_file):
+            return
+
         offsets = Binarizer.find_offsets(input_file, num_workers)
         pool = None
         if num_workers > 1:
