@@ -18,13 +18,17 @@ def label_smoothed_nll_loss(lprobs, target, epsilon, ignore_index=None, reduce=T
     nll_loss = -lprobs.gather(dim=-1, index=target)
     smooth_loss = -lprobs.sum(dim=-1, keepdim=True)
     if tgt_wil is not None and seg_indices is not None and seg_weights is not None:
+        activate_toks = 0
         loss_weights = torch.ones_like(nll_loss)
         assert len(seg_indices) == len(seg_weights)
         for seg_i, seg_w in zip(seg_indices, seg_weights):
             seg_mask = tgt_wil.eq(seg_i)
             loss_weights.masked_fill_(seg_mask, seg_w)
+            activate_toks += seg_mask.sum() * seg_w
         nll_loss *= loss_weights
         smooth_loss *= loss_weights
+    else:
+        activate_toks = None
     if ignore_index is not None:
         pad_mask = target.eq(ignore_index)
         nll_loss.masked_fill_(pad_mask, 0.)
@@ -37,7 +41,7 @@ def label_smoothed_nll_loss(lprobs, target, epsilon, ignore_index=None, reduce=T
         smooth_loss = smooth_loss.sum()
     eps_i = epsilon / lprobs.size(-1)
     loss = (1. - epsilon) * nll_loss + eps_i * smooth_loss
-    return loss, nll_loss
+    return loss, nll_loss, activate_toks
 
 
 @register_criterion('label_smoothed_cross_entropy')
@@ -76,9 +80,9 @@ class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
         """
 
         net_output = model(**sample['net_input'])
-        loss, nll_loss = self.compute_loss(model, net_output, sample, reduce=reduce)
-        if 'target_wil' in sample.keys():
-            loss_scale = 1.0 * torch.ones_like(sample['target_wil']).sum() / sample['target_wil'].sum()
+        loss, nll_loss, activate_toks = self.compute_loss(model, net_output, sample, reduce=reduce)
+        if activate_toks is not None:
+            loss_scale = 1.0 * torch.ones_like(sample['target_wil']).sum() / activate_toks
         else:
             loss_scale = 1.0
         loss *= loss_scale
@@ -101,11 +105,11 @@ class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
             target_wil = sample['target_wil'].view(-1, 1)
         else:
             target_wil = None
-        loss, nll_loss = label_smoothed_nll_loss(
+        loss, nll_loss, activate_toks = label_smoothed_nll_loss(
             lprobs, target, self.eps, ignore_index=self.padding_idx, reduce=reduce,
             tgt_wil=target_wil,seg_indices=self.ls_seg_indices,seg_weights=self.ls_seg_weights,
         )
-        return loss, nll_loss
+        return loss, nll_loss, activate_toks
 
     @staticmethod
     def reduce_metrics(logging_outputs) -> None:
