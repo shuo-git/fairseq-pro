@@ -77,7 +77,10 @@ class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
 
         net_output = model(**sample['net_input'])
         loss, nll_loss = self.compute_loss(model, net_output, sample, reduce=reduce)
-        loss_scale = 1.0 * torch.ones_like(sample['target_wil']).sum() / sample['target_wil'].sum()
+        if 'target_wil' in sample.keys():
+            loss_scale = 1.0 * torch.ones_like(sample['target_wil']).sum() / sample['target_wil'].sum()
+        else:
+            loss_scale = 1.0
         loss *= loss_scale
         nll_loss *= loss_scale
         sample_size = sample['target'].size(0) if self.sentence_avg else sample['ntokens']
@@ -94,7 +97,10 @@ class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
         lprobs = model.get_normalized_probs(net_output, log_probs=True)
         lprobs = lprobs.view(-1, lprobs.size(-1))
         target = model.get_targets(sample, net_output).view(-1, 1)
-        target_wil = sample['target_wil'].view(-1, 1)
+        if 'target_wil' in sample.keys():
+            target_wil = sample['target_wil'].view(-1, 1)
+        else:
+            target_wil = None
         loss, nll_loss = label_smoothed_nll_loss(
             lprobs, target, self.eps, ignore_index=self.padding_idx, reduce=reduce,
             tgt_wil=target_wil,seg_indices=self.ls_seg_indices,seg_weights=self.ls_seg_weights,
