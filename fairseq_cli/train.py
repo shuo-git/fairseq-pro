@@ -66,10 +66,11 @@ def main(args):
 
     # Build model and criterion
     model = task.build_model(args)
-    for p in model.parameters():
-        p.requires_grad = False
-    for p in model.encoder.embed_prefix.parameters():
-        p.requires_grad = True
+    if args.freeze_model:
+        for p in model.parameters():
+            p.requires_grad = False
+        for p in model.encoder.embed_prefix.parameters():
+            p.requires_grad = True
     criterion = task.build_criterion(args)
     logger.info(model)
     logger.info("task: {} ({})".format(args.task, task.__class__.__name__))

@@ -256,6 +256,7 @@ def get_parser(desc, default_task="translation"):
     # By Shuo
     parser.add_argument('--segment-embed-mod', type=int, metavar='N',
                         default=100)
+    parser.add_argument('--freeze-model', action='store_true', default=False)
     # fmt: on
     return parser
 
