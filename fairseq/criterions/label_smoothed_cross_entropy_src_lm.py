@@ -9,10 +9,7 @@ from fairseq import metrics, utils
 from fairseq.criterions import FairseqCriterion, register_criterion
 
 
-def get_normalized_probs(
-    _net_output: Tuple[Tensor, Optional[Dict[str, List[Optional[Tensor]]]]],
-    log_probs: bool,
-):
+def get_normalized_probs(_net_output, log_probs):
     """Get normalized probabilities (or log probs) from a net's output."""
     logits = _net_output
     if log_probs:
@@ -42,7 +39,7 @@ def label_smoothed_nll_loss(lprobs, target, epsilon, ignore_index=None, reduce=T
 
 
 @register_criterion('label_smoothed_cross_entropy_src_lm')
-class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
+class LabelSmoothedCrossEntropySrcLMCriterion(FairseqCriterion):
 
     def __init__(self, task, sentence_avg, label_smoothing):
         super().__init__(task)
