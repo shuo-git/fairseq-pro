@@ -687,6 +687,9 @@ class TransformerJointDecoder(FairseqIncrementalDecoder):
         )
         if not features_only:
             x = self.output_layer(x)
+            encoder_x = self.output_layer(extra['source'])
+            extra['enc_out'] = encoder_x
+
         return x, extra
 
     def extract_features(
