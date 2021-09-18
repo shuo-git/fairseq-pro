@@ -211,22 +211,22 @@ class MultiheadAttention(nn.Module):
             v = self.v_proj(value)
         q *= self.scaling
 
-        if self.bias_k is not None:
-            assert self.bias_v is not None
-            k = torch.cat([k, self.bias_k.repeat(1, bsz, 1)])
-            v = torch.cat([v, self.bias_v.repeat(1, bsz, 1)])
-            if attn_mask is not None:
-                attn_mask = torch.cat(
-                    [attn_mask, attn_mask.new_zeros(attn_mask.size(0), 1)], dim=1
-                )
-            if key_padding_mask is not None:
-                key_padding_mask = torch.cat(
-                    [
-                        key_padding_mask,
-                        key_padding_mask.new_zeros(key_padding_mask.size(0), 1),
-                    ],
-                    dim=1,
-                )
+        # if self.bias_k is not None:
+        #     assert self.bias_v is not None
+        #     k = torch.cat([k, self.bias_k.repeat(1, bsz, 1)])
+        #     v = torch.cat([v, self.bias_v.repeat(1, bsz, 1)])
+        #     if attn_mask is not None:
+        #         attn_mask = torch.cat(
+        #             [attn_mask, attn_mask.new_zeros(attn_mask.size(0), 1)], dim=1
+        #         )
+        #     if key_padding_mask is not None:
+        #         key_padding_mask = torch.cat(
+        #             [
+        #                 key_padding_mask,
+        #                 key_padding_mask.new_zeros(key_padding_mask.size(0), 1),
+        #             ],
+        #             dim=1,
+        #         )
 
         q = (
             q.contiguous()
@@ -296,25 +296,25 @@ class MultiheadAttention(nn.Module):
             assert key_padding_mask.size(0) == bsz
             assert key_padding_mask.size(1) == src_len
 
-        if self.add_zero_attn:
-            assert v is not None
-            src_len += 1
-            k = torch.cat([k, k.new_zeros((k.size(0), 1) + k.size()[2:])], dim=1)
-            v = torch.cat([v, v.new_zeros((v.size(0), 1) + v.size()[2:])], dim=1)
-            if attn_mask is not None:
-                attn_mask = torch.cat(
-                    [attn_mask, attn_mask.new_zeros(attn_mask.size(0), 1)], dim=1
-                )
-            if key_padding_mask is not None:
-                key_padding_mask = torch.cat(
-                    [
-                        key_padding_mask,
-                        torch.zeros(key_padding_mask.size(0), 1).type_as(
-                            key_padding_mask
-                        ),
-                    ],
-                    dim=1,
-                )
+        # if self.add_zero_attn:
+        #     assert v is not None
+        #     src_len += 1
+        #     k = torch.cat([k, k.new_zeros((k.size(0), 1) + k.size()[2:])], dim=1)
+        #     v = torch.cat([v, v.new_zeros((v.size(0), 1) + v.size()[2:])], dim=1)
+        #     if attn_mask is not None:
+        #         attn_mask = torch.cat(
+        #             [attn_mask, attn_mask.new_zeros(attn_mask.size(0), 1)], dim=1
+        #         )
+        #     if key_padding_mask is not None:
+        #         key_padding_mask = torch.cat(
+        #             [
+        #                 key_padding_mask,
+        #                 torch.zeros(key_padding_mask.size(0), 1).type_as(
+        #                     key_padding_mask
+        #                 ),
+        #             ],
+        #             dim=1,
+        #         )
 
         attn_weights = torch.bmm(q, k.transpose(1, 2))
         attn_weights = MultiheadAttention.apply_sparse_mask(attn_weights, tgt_len, src_len, bsz)
