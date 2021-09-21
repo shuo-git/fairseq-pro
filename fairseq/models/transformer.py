@@ -685,9 +685,10 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         if not features_only:
             x = self.output_layer(x)
 
-            # B x T x C -> T x B x C for encoder output
-            encoder_x = self.output_layer(encoder_out.encoder_out.transpose(0, 1))
-            extra['enc_out'] = encoder_x
+            if encoder_out is not None:
+                # B x T x C -> T x B x C for encoder output
+                encoder_x = self.output_layer(encoder_out.encoder_out.transpose(0, 1))
+                extra['enc_out'] = encoder_x
 
         return x, extra
 
