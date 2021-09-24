@@ -253,6 +253,7 @@ class LanguagePairDataset(FairseqDataset):
         self.eos = (eos if eos is not None else src_dict.eos())
         self.src_lang_id = src_lang_id
         self.tgt_lang_id = tgt_lang_id
+        self.target_key_sep = target_key_sep
         if num_buckets > 0:
             from fairseq.data import BucketPadLengthDataset
             self.src = BucketPadLengthDataset(
@@ -315,10 +316,10 @@ class LanguagePairDataset(FairseqDataset):
         #     if self.src[index][-1] == eos:
         #         src_item = self.src[index][:-1]
 
-        if target_key_sep > -1:
+        if self.target_key_sep > -1:
             sep_idx1 = sep_idx2 = -1
             for my_idx, my_item in enumerate(tgt_item.tolist()):
-                if my_item == target_key_sep:
+                if my_item == self.target_key_sep:
                     if sep_idx1 < 0:
                         sep_idx1 = my_idx
                     else:
