@@ -169,7 +169,7 @@ class TransformerJointModel(FairseqEncoderDecoderModel):
                             help='if True, use word dropout on embedding layer of decoder')
         parser.add_argument('--word-dropout-prob', type=float, metavar='D', default=0,
                             help='word dropout probability')
-        parser.add_argument('--language-embeddings', action='store_true',
+        parser.add_argument('--language-embeddings', action='store_true', default=True,
                             help='use language embeddings')
         # fmt: on
 
