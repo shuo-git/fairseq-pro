@@ -33,6 +33,7 @@ from .transformer_sentence_encoder import TransformerSentenceEncoder
 from .transpose_last import TransposeLast
 from .unfold import unfold1d
 from .transformer_layer import TransformerDecoderLayer, TransformerEncoderLayer
+from .transformer_layer import Target_Plug_In_Layer_Type1, Target_Plug_In_Layer_Type2
 from .vggblock import VGGBlock
 
 __all__ = [
@@ -69,6 +70,8 @@ __all__ = [
     'TransformerSentenceEncoder',
     'TransformerDecoderLayer',
     'TransformerEncoderLayer',
+    'Target_Plug_In_Layer_Type1',
+    'Target_Plug_In_Layer_Type2',
     'TransposeLast',
     'VGGBlock',
     'unfold1d',
