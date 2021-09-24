@@ -43,6 +43,7 @@ def load_langpair_dataset(
     num_buckets=0,
     shuffle=True,
     target_word_int_label=None,
+    target_key_sep=-1，
 ):
 
     def split_exists(split, src, tgt, lang, data_path):
@@ -137,6 +138,7 @@ def load_langpair_dataset(
         num_buckets=num_buckets,
         shuffle=shuffle,
         target_wil_dataset=target_wil_dataset,
+        target_key_sep=target_key_sep,
     )
 
 
@@ -226,6 +228,7 @@ class TranslationTask(LegacyFairseqTask):
                             choices=['base', 'medium', 'large', 'xlarge'])
         parser.add_argument('--source-word-int-label', action='store_true', default='False')
         parser.add_argument('--target-word-int-label', action='store_true', default='False')
+        parser.add_argument('--target-key-sep', type=int, default=-1)
         # fmt: on
 
     def __init__(self, args, src_dict, tgt_dict):
@@ -291,6 +294,7 @@ class TranslationTask(LegacyFairseqTask):
             num_buckets=self.args.num_batch_buckets,
             shuffle=(split != 'test'),
             target_word_int_label=self.args.target_word_int_label if split == 'train' else False,
+            target_key_sep=self.target_key_sep,
         )
 
     def build_dataset_for_inference(self, src_tokens, src_lengths, constraints=None):

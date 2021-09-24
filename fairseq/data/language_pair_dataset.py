@@ -78,6 +78,8 @@ def collate(
     prev_output_tokens = None
     target = None
     target_wil = None
+    target_key = None
+    target_value = None
     if samples[0].get('target', None) is not None:
         target = merge(
             'target', left_pad=left_pad_target,
@@ -91,6 +93,11 @@ def collate(
 
         if samples[0].get('target_wil', None) is not None:
             target_wil = merge_wil('target_wil', left_pad=left_pad_target)
+
+        if samples[0].get('target_key', None) is not None and \
+           samples[0].get('target_value', None) is not None:
+            target_key = merge('target_key', left_pad=left_pad_target)
+            target_value = merge('target_value', left_pad=left_pad_target)
 
         if samples[0].get('prev_output_tokens', None) is not None:
             prev_output_tokens = merge('prev_output_tokens', left_pad=left_pad_target)
@@ -120,6 +127,9 @@ def collate(
         batch['net_input']['prev_output_tokens'] = prev_output_tokens.index_select(0, sort_order)
     if target_wil is not None:
         batch['target_wil'] = target_wil.index_select(0, sort_order)
+    if target_key is not None and target_value is not None:
+        batch['target_key'] = target_key.index_select(0, sort_order)
+        batch['target_value'] = target_value.index_select(0, sort_order)
 
     if samples[0].get('alignment', None) is not None:
         bsz, tgt_sz = batch['target'].shape
@@ -211,6 +221,7 @@ class LanguagePairDataset(FairseqDataset):
         src_lang_id=None,
         tgt_lang_id=None,
         target_wil_dataset=None,
+        target_key_sep=-1,
     ):
         if tgt_dict is not None:
             assert src_dict.pad() == tgt_dict.pad()
@@ -285,24 +296,40 @@ class LanguagePairDataset(FairseqDataset):
         # EOS from end of src sentence if it exists. This is useful when we use
         # use existing datasets for opposite directions i.e., when we want to
         # use tgt_dataset as src_dataset and vice versa
-        if self.append_eos_to_target:
-            eos = self.tgt_dict.eos() if self.tgt_dict else self.src_dict.eos()
-            if self.tgt and self.tgt[index][-1] != eos:
-                tgt_item = torch.cat([self.tgt[index], torch.LongTensor([eos])])
+        # if self.append_eos_to_target:
+        #     eos = self.tgt_dict.eos() if self.tgt_dict else self.src_dict.eos()
+        #     if self.tgt and self.tgt[index][-1] != eos:
+        #         tgt_item = torch.cat([self.tgt[index], torch.LongTensor([eos])])
 
-        if self.append_bos:
-            bos = self.tgt_dict.bos() if self.tgt_dict else self.src_dict.bos()
-            if self.tgt and self.tgt[index][0] != bos:
-                tgt_item = torch.cat([torch.LongTensor([bos]), self.tgt[index]])
+        # if self.append_bos:
+        #     bos = self.tgt_dict.bos() if self.tgt_dict else self.src_dict.bos()
+        #     if self.tgt and self.tgt[index][0] != bos:
+        #         tgt_item = torch.cat([torch.LongTensor([bos]), self.tgt[index]])
 
-            bos = self.src_dict.bos()
-            if self.src[index][0] != bos:
-                src_item = torch.cat([torch.LongTensor([bos]), self.src[index]])
+        #     bos = self.src_dict.bos()
+        #     if self.src[index][0] != bos:
+        #         src_item = torch.cat([torch.LongTensor([bos]), self.src[index]])
 
-        if self.remove_eos_from_source:
-            eos = self.src_dict.eos()
-            if self.src[index][-1] == eos:
-                src_item = self.src[index][:-1]
+        # if self.remove_eos_from_source:
+        #     eos = self.src_dict.eos()
+        #     if self.src[index][-1] == eos:
+        #         src_item = self.src[index][:-1]
+
+        if target_key_sep > -1:
+            sep_idx1 = sep_idx2 = -1
+            for my_idx, my_item in enumerate(tgt_item.tolist()):
+                if my_item == target_key_sep:
+                    if sep_idx1 < 0:
+                        sep_idx1 = my_idx
+                    else:
+                        sep_idx2 = my_idx
+                        break
+            tgt_key_item = tgt_item[:sep_idx1]
+            tgt_value_item = tgt_item[sep_idx1+1:sep_idx2]
+            tgt_item = tgt_item[sep_idx2+1:]
+        else:
+            tgt_key_item = None
+            tgt_value_item = None
 
         example = {
             'id': index,
@@ -315,6 +342,9 @@ class LanguagePairDataset(FairseqDataset):
             example["constraints"] = self.constraints[index]
         if self.target_wil_dataset is not None:
             example['target_wil'] = self.target_wil_dataset[index]
+        if tgt_key_item is not None and tgt_value_item is not None:
+            example['target_key'] = tgt_key_item
+            example['target_value'] = tgt_value_item
         return example
 
     def __len__(self):
