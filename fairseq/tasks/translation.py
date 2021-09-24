@@ -294,7 +294,7 @@ class TranslationTask(LegacyFairseqTask):
             num_buckets=self.args.num_batch_buckets,
             shuffle=(split != 'test'),
             target_word_int_label=self.args.target_word_int_label if split == 'train' else False,
-            target_key_sep=self.target_key_sep,
+            target_key_sep=self.args.target_key_sep,
         )
 
     def build_dataset_for_inference(self, src_tokens, src_lengths, constraints=None):
