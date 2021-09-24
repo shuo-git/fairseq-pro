@@ -43,7 +43,7 @@ def load_langpair_dataset(
     num_buckets=0,
     shuffle=True,
     target_word_int_label=None,
-    target_key_sep=-1，
+    target_key_sep=-1,
 ):
 
     def split_exists(split, src, tgt, lang, data_path):
