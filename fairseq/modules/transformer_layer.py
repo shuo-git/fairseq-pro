@@ -139,6 +139,34 @@ class TransformerEncoderLayer(nn.Module):
         return x
 
 
+class Target_Plug_In_Layer_Type1(nn.Module):
+    def __init__(self, my_dim, head_num, bias=True):
+        super().__init__()
+        self.scaling = (my_dim // head_num) ** -0.5
+        self.fc = nn.Linear(my_dim, my_dim, bias=bias)
+        nn.init.xavier_uniform_(self.fc.weight, gain=1 / math.sqrt(2))
+
+    def forward(self, x):
+        return self.scaling * self.fc(x)
+
+
+class Target_Plug_In_Layer_Type2(nn.Module):
+    def __init__(self, my_dim, head_num, bias=True):
+        super().__init__()
+        self.scaling = (my_dim // head_num) ** -0.5
+        self.fc1 = nn.Linear(my_dim, my_dim * 4, bias=bias)
+        self.fc2 = nn.Linear(my_dim * 4, my_dim, bias=bias)
+        nn.init.xavier_uniform_(self.fc1.weight, gain=1 / math.sqrt(2))
+        nn.init.xavier_uniform_(self.fc2.weight, gain=1 / math.sqrt(2))
+        self.activation_fn = utils.get_activation_fn('tanh')
+
+    def forward(self, x):
+        x = self.activation_fn(self.fc1(x))
+        x = self.fc2(x)
+        x *= self.scaling
+        return x
+
+
 class TransformerDecoderLayer(nn.Module):
     """Decoder layer block.
 

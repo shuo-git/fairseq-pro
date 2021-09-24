@@ -26,6 +26,8 @@ from fairseq.modules import (
     SinusoidalPositionalEmbedding,
     TransformerDecoderLayer,
     TransformerEncoderLayer,
+    Target_Plug_In_Layer_Type1,
+    Target_Plug_In_Layer_Type2,
 )
 from fairseq.modules.quant_noise import quant_noise as apply_quant_noise_
 from torch import Tensor
@@ -176,6 +178,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='if True, use word dropout on embedding layer of decoder')
         parser.add_argument('--word-dropout-prob', type=float, metavar='D', default=0,
                             help='word dropout probability')
+        parser.add_argument('--target-kv-table', action='store_true', default=False)
         # fmt: on
 
     @classmethod
@@ -607,6 +610,16 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         else:
             self.embed_languages = None
 
+        # Build the Plug-In network
+        if self.args.target_kv_table:
+            self.plug_ins = nn.ModuleList([])
+            self.plug_ins.extend(
+                [
+                    self.build_plug_in_layer(embed_dim, args.decoder_attention_heads)
+                    for _ in range(args.decoder_layers + 1)
+                ]
+            )
+
         if getattr(args, "layernorm_embedding", False):
             self.layernorm_embedding = LayerNorm(embed_dim)
         else:
@@ -665,6 +678,9 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             nn.init.normal_(
                 self.output_projection.weight, mean=0, std=self.output_embed_dim ** -0.5
             )
+
+    def build_plug_in_layer(self, my_dim, head_num):
+        return Target_Plug_In_Layer_Type1(my_dim, head_num)
 
     def build_decoder_layer(self, args, no_encoder_attn=False):
         return TransformerDecoderLayer(args, no_encoder_attn)
