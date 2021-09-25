@@ -266,6 +266,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         features_only: bool = False,
         alignment_layer: Optional[int] = None,
         alignment_heads: Optional[int] = None,
+        **kwargs,
     ):
         """
         Run the forward pass for an encoder-decoder model.
@@ -284,6 +285,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
             alignment_heads=alignment_heads,
             src_lengths=src_lengths,
             return_all_hiddens=return_all_hiddens,
+            **kwargs,
         )
         return decoder_out
 
@@ -568,6 +570,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
 
         input_embed_dim = embed_tokens.embedding_dim
         embed_dim = args.decoder_embed_dim
+        assert embed_dim == input_embed_dim
         self.embed_dim = embed_dim
         self.output_embed_dim = args.decoder_output_dim
 
@@ -587,11 +590,11 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         else:
             self.quant_noise = None
 
-        self.project_in_dim = (
-            Linear(input_embed_dim, embed_dim, bias=False)
-            if embed_dim != input_embed_dim
-            else None
-        )
+        # self.project_in_dim = (
+        #     Linear(input_embed_dim, embed_dim, bias=False)
+        #     if embed_dim != input_embed_dim
+        #     else None
+        # )
 
         self.embed_positions = (
             PositionalEmbedding(
@@ -619,6 +622,8 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                     for _ in range(args.decoder_layers + 1)
                 ]
             )
+        else:
+            self.plug_ins = None
 
         if getattr(args, "layernorm_embedding", False):
             self.layernorm_embedding = LayerNorm(embed_dim)
@@ -720,6 +725,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             alignment_layer=alignment_layer,
             alignment_heads=alignment_heads,
             prev_output_wil=kwargs.get('src_wil', None),
+            **kwargs,
         )
         if not features_only:
             x = self.output_layer(x)
@@ -734,6 +740,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         alignment_layer: Optional[int] = None,
         alignment_heads: Optional[int] = None,
         prev_output_wil = None,
+        **kwargs,
     ):
         return self.extract_features_scriptable(
             prev_output_tokens,
@@ -743,6 +750,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             alignment_layer,
             alignment_heads,
             prev_output_wil=prev_output_wil,
+            **kwargs,
         )
 
     """
@@ -760,6 +768,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         alignment_layer: Optional[int] = None,
         alignment_heads: Optional[int] = None,
         prev_output_wil = None,
+        **kwargs,
     ):
         """
         Similar to *forward* but only return features.
@@ -820,12 +829,20 @@ class TransformerDecoder(FairseqIncrementalDecoder):
 
         # embed tokens and positions
         x = self.embed_scale * self.embed_tokens(prev_output_tokens)
+        tgt_k_toks = kwargs.get('target_key', None)
+        tgt_v_toks = kwargs.get('target_value', None)
+        if tgt_k_toks is not None and tgt_v_toks is not None:
+            tgt_k = self.embed_scale * self.embed_tokens(tgt_k_toks)
+            tgt_v = self.embed_scale * self.embed_tokens(tgt_v_toks)
+            attend_kv_table = True
+        else:
+            attend_kv_table = False
 
-        if self.quant_noise is not None:
-            x = self.quant_noise(x)
+        # if self.quant_noise is not None:
+        #     x = self.quant_noise(x)
 
-        if self.project_in_dim is not None:
-            x = self.project_in_dim(x)
+        # if self.project_in_dim is not None:
+        #     x = self.project_in_dim(x)
 
         if positions is not None:
             x += positions
@@ -835,6 +852,9 @@ class TransformerDecoder(FairseqIncrementalDecoder):
 
         if self.layernorm_embedding is not None:
             x = self.layernorm_embedding(x)
+            if attend_kv_table:
+                tgt_k = self.layernorm_embedding(tgt_k)
+                tgt_v = self.layernorm_embedding(tgt_v)
 
         if self.args.word_dropout:
             if self.training:
@@ -844,15 +864,23 @@ class TransformerDecoder(FairseqIncrementalDecoder):
 
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
+        if attend_kv_table:
+            tgt_k = tgt_k.transpose(0, 1)
+            tgt_v = tgt_v.transpose(0, 1)
 
         self_attn_padding_mask: Optional[Tensor] = None
         if self.cross_self_attention or prev_output_tokens.eq(self.padding_idx).any():
             self_attn_padding_mask = prev_output_tokens.eq(self.padding_idx)
+        if attend_kv_table and tgt_k_toks.eq(self.padding_idx).any():
+            attend_kv_table_padding_mask = tgt_k_toks.eq(self.padding_idx)
 
         # decoder layers
         attn: Optional[Tensor] = None
         inner_states: List[Optional[Tensor]] = [x]
         for idx, layer in enumerate(self.layers):
+            if attend_kv_table:
+                temp_tgt_k, temp_tgt_v = self.plug_ins[idx](tgt_k, tgt_v)
+
             if incremental_state is None and not full_context_alignment:
                 self_attn_mask = self.buffered_future_mask(x)
             else:
@@ -867,6 +895,9 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                 self_attn_padding_mask=self_attn_padding_mask,
                 need_attn=bool((idx == alignment_layer)),
                 need_head_weights=bool((idx == alignment_layer)),
+                past_key=temp_tgt_k,
+                past_value=temp_tgt_v,
+                past_key_padding_mask=attend_kv_table_padding_mask,
             )
             inner_states.append(x)
             if layer_attn is not None and idx == alignment_layer:

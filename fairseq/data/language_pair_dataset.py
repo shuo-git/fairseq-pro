@@ -128,8 +128,8 @@ def collate(
     if target_wil is not None:
         batch['target_wil'] = target_wil.index_select(0, sort_order)
     if target_key is not None and target_value is not None:
-        batch['target_key'] = target_key.index_select(0, sort_order)
-        batch['target_value'] = target_value.index_select(0, sort_order)
+        batch['net_input']['target_key'] = target_key.index_select(0, sort_order)
+        batch['net_input']['target_value'] = target_value.index_select(0, sort_order)
 
     if samples[0].get('alignment', None) is not None:
         bsz, tgt_sz = batch['target'].shape

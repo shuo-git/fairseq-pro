@@ -142,12 +142,13 @@ class TransformerEncoderLayer(nn.Module):
 class Target_Plug_In_Layer_Type1(nn.Module):
     def __init__(self, my_dim, head_num, bias=True):
         super().__init__()
-        self.scaling = (my_dim // head_num) ** -0.5
-        self.fc = nn.Linear(my_dim, my_dim, bias=bias)
-        nn.init.xavier_uniform_(self.fc.weight, gain=1 / math.sqrt(2))
+        self.k_proj = nn.Linear(my_dim, my_dim, bias=bias)
+        self.v_proj = nn.Linear(my_dim, my_dim, bias=bias)
+        nn.init.xavier_uniform_(self.k_proj.weight, gain=1 / math.sqrt(2))
+        nn.init.xavier_uniform_(self.v_proj.weight, gain=1 / math.sqrt(2))
 
-    def forward(self, x):
-        return self.scaling * self.fc(x)
+    def forward(self, k, v):
+        return self.k_proj(k), self.v_proj(v)
 
 
 class Target_Plug_In_Layer_Type2(nn.Module):
@@ -283,6 +284,9 @@ class TransformerDecoderLayer(nn.Module):
         self_attn_padding_mask: Optional[torch.Tensor] = None,
         need_attn: bool = False,
         need_head_weights: bool = False,
+        past_key: Optional[Tensor] = None,
+        past_value: Optional[Tensor] = None,
+        past_key_padding_mask: Optional[torch.Tensor] = None,
     ):
         """
         Args:
@@ -303,40 +307,42 @@ class TransformerDecoderLayer(nn.Module):
         residual = x
         if self.normalize_before:
             x = self.self_attn_layer_norm(x)
-        if prev_self_attn_state is not None:
-            prev_key, prev_value = prev_self_attn_state[:2]
-            saved_state: Dict[str, Optional[Tensor]] = {
-                "prev_key": prev_key,
-                "prev_value": prev_value,
-            }
-            if len(prev_self_attn_state) >= 3:
-                saved_state["prev_key_padding_mask"] = prev_self_attn_state[2]
-            assert incremental_state is not None
-            self.self_attn._set_input_buffer(incremental_state, saved_state)
+        # if prev_self_attn_state is not None:
+        #     prev_key, prev_value = prev_self_attn_state[:2]
+        #     saved_state: Dict[str, Optional[Tensor]] = {
+        #         "prev_key": prev_key,
+        #         "prev_value": prev_value,
+        #     }
+        #     if len(prev_self_attn_state) >= 3:
+        #         saved_state["prev_key_padding_mask"] = prev_self_attn_state[2]
+        #     assert incremental_state is not None
+        #     self.self_attn._set_input_buffer(incremental_state, saved_state)
         _self_attn_input_buffer = self.self_attn._get_input_buffer(incremental_state)
-        if self.cross_self_attention and not (
-            incremental_state is not None
-            and _self_attn_input_buffer is not None
-            and "prev_key" in _self_attn_input_buffer
-        ):
-            if self_attn_mask is not None:
-                assert encoder_out is not None
-                self_attn_mask = torch.cat(
-                    (x.new_zeros(x.size(0), encoder_out.size(0)), self_attn_mask), dim=1
-                )
-            if self_attn_padding_mask is not None:
-                if encoder_padding_mask is None:
-                    assert encoder_out is not None
-                    encoder_padding_mask = self_attn_padding_mask.new_zeros(
-                        encoder_out.size(1), encoder_out.size(0)
-                    )
-                self_attn_padding_mask = torch.cat(
-                    (encoder_padding_mask, self_attn_padding_mask), dim=1
-                )
-            assert encoder_out is not None
-            y = torch.cat((encoder_out, x), dim=0)
-        else:
-            y = x
+
+        # if self.cross_self_attention and not (
+        #     incremental_state is not None
+        #     and _self_attn_input_buffer is not None
+        #     and "prev_key" in _self_attn_input_buffer
+        # ):
+        #     if self_attn_mask is not None:
+        #         assert encoder_out is not None
+        #         self_attn_mask = torch.cat(
+        #             (x.new_zeros(x.size(0), encoder_out.size(0)), self_attn_mask), dim=1
+        #         )
+        #     if self_attn_padding_mask is not None:
+        #         if encoder_padding_mask is None:
+        #             assert encoder_out is not None
+        #             encoder_padding_mask = self_attn_padding_mask.new_zeros(
+        #                 encoder_out.size(1), encoder_out.size(0)
+        #             )
+        #         self_attn_padding_mask = torch.cat(
+        #             (encoder_padding_mask, self_attn_padding_mask), dim=1
+        #         )
+        #     assert encoder_out is not None
+        #     y = torch.cat((encoder_out, x), dim=0)
+        # else:
+        #     y = x
+        y = x
 
         x, attn = self.self_attn(
             query=x,
@@ -346,6 +352,9 @@ class TransformerDecoderLayer(nn.Module):
             incremental_state=incremental_state,
             need_weights=False,
             attn_mask=self_attn_mask,
+            past_key=past_key,
+            past_value=past_value,
+            past_key_padding_mask=past_key_padding_mask,
         )
         x = self.dropout_module(x)
         x = residual + x
@@ -356,16 +365,16 @@ class TransformerDecoderLayer(nn.Module):
             residual = x
             if self.normalize_before:
                 x = self.encoder_attn_layer_norm(x)
-            if prev_attn_state is not None:
-                prev_key, prev_value = prev_attn_state[:2]
-                saved_state: Dict[str, Optional[Tensor]] = {
-                    "prev_key": prev_key,
-                    "prev_value": prev_value,
-                }
-                if len(prev_attn_state) >= 3:
-                    saved_state["prev_key_padding_mask"] = prev_attn_state[2]
-                assert incremental_state is not None
-                self.encoder_attn._set_input_buffer(incremental_state, saved_state)
+            # if prev_attn_state is not None:
+            #     prev_key, prev_value = prev_attn_state[:2]
+            #     saved_state: Dict[str, Optional[Tensor]] = {
+            #         "prev_key": prev_key,
+            #         "prev_value": prev_value,
+            #     }
+            #     if len(prev_attn_state) >= 3:
+            #         saved_state["prev_key_padding_mask"] = prev_attn_state[2]
+            #     assert incremental_state is not None
+            #     self.encoder_attn._set_input_buffer(incremental_state, saved_state)
 
             x, attn = self.encoder_attn(
                 query=x,
@@ -376,6 +385,9 @@ class TransformerDecoderLayer(nn.Module):
                 static_kv=True,
                 need_weights=need_attn or (not self.training and self.need_attn),
                 need_head_weights=need_head_weights,
+                past_key=past_key,
+                past_value=past_value,
+                past_key_padding_mask=past_key_padding_mask,
             )
             x = self.dropout_module(x)
             x = residual + x
@@ -393,18 +405,18 @@ class TransformerDecoderLayer(nn.Module):
         x = residual + x
         if not self.normalize_before:
             x = self.final_layer_norm(x)
-        if self.onnx_trace and incremental_state is not None:
-            saved_state = self.self_attn._get_input_buffer(incremental_state)
-            assert saved_state is not None
-            if self_attn_padding_mask is not None:
-                self_attn_state = [
-                    saved_state["prev_key"],
-                    saved_state["prev_value"],
-                    saved_state["prev_key_padding_mask"],
-                ]
-            else:
-                self_attn_state = [saved_state["prev_key"], saved_state["prev_value"]]
-            return x, attn, self_attn_state
+        # if self.onnx_trace and incremental_state is not None:
+        #     saved_state = self.self_attn._get_input_buffer(incremental_state)
+        #     assert saved_state is not None
+        #     if self_attn_padding_mask is not None:
+        #         self_attn_state = [
+        #             saved_state["prev_key"],
+        #             saved_state["prev_value"],
+        #             saved_state["prev_key_padding_mask"],
+        #         ]
+        #     else:
+        #         self_attn_state = [saved_state["prev_key"], saved_state["prev_value"]]
+        #     return x, attn, self_attn_state
         return x, attn, None
 
     def make_generation_fast_(self, need_attn: bool = False, **kwargs):

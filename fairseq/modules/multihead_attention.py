@@ -120,6 +120,9 @@ class MultiheadAttention(nn.Module):
         attn_mask: Optional[Tensor] = None,
         before_softmax: bool = False,
         need_head_weights: bool = False,
+        past_key: Optional[Tensor] = None,
+        past_value: Optional[Tensor] = None,
+        past_key_padding_mask: Optional[torch.Tensor] = None,
     ) -> Tuple[Tensor, Optional[Tensor]]:
         """Input shape: Time x Batch x Channel
 
@@ -212,22 +215,22 @@ class MultiheadAttention(nn.Module):
             v = self.v_proj(value)
         q *= self.scaling
 
-        if self.bias_k is not None:
-            assert self.bias_v is not None
-            k = torch.cat([k, self.bias_k.repeat(1, bsz, 1)])
-            v = torch.cat([v, self.bias_v.repeat(1, bsz, 1)])
-            if attn_mask is not None:
-                attn_mask = torch.cat(
-                    [attn_mask, attn_mask.new_zeros(attn_mask.size(0), 1)], dim=1
-                )
-            if key_padding_mask is not None:
-                key_padding_mask = torch.cat(
-                    [
-                        key_padding_mask,
-                        key_padding_mask.new_zeros(key_padding_mask.size(0), 1),
-                    ],
-                    dim=1,
-                )
+        # if self.bias_k is not None:
+        #     assert self.bias_v is not None
+        #     k = torch.cat([k, self.bias_k.repeat(1, bsz, 1)])
+        #     v = torch.cat([v, self.bias_v.repeat(1, bsz, 1)])
+        #     if attn_mask is not None:
+        #         attn_mask = torch.cat(
+        #             [attn_mask, attn_mask.new_zeros(attn_mask.size(0), 1)], dim=1
+        #         )
+        #     if key_padding_mask is not None:
+        #         key_padding_mask = torch.cat(
+        #             [
+        #                 key_padding_mask,
+        #                 key_padding_mask.new_zeros(key_padding_mask.size(0), 1),
+        #             ],
+        #             dim=1,
+        #         )
 
         q = (
             q.contiguous()
@@ -243,6 +246,18 @@ class MultiheadAttention(nn.Module):
         if v is not None:
             v = (
                 v.contiguous()
+                .view(-1, bsz * self.num_heads, self.head_dim)
+                .transpose(0, 1)
+            )
+        if past_key is not None:
+            past_key = (
+                past_key.contiguous()
+                .view(-1, bsz * self.num_heads, self.head_dim)
+                .transpose(0, 1)
+            )
+        if past_value is not None:
+            past_value = (
+                past_value.contiguous()
                 .view(-1, bsz * self.num_heads, self.head_dim)
                 .transpose(0, 1)
             )
@@ -285,6 +300,17 @@ class MultiheadAttention(nn.Module):
             # In this branch incremental_state is never None
             assert incremental_state is not None
             incremental_state = self._set_input_buffer(incremental_state, saved_state)
+
+        # prepend past_key & past_value by Shuo
+        if past_key is not None and past_value is not None:
+            k = torch.cat([past_key, k], dim=1)
+            v = torch.cat([past_value, v], dim=1)
+            if attn_mask is not None:
+                past_attn_mask = torch.zeros([tgt_len, past_key.size(1)]).to(attn_mask)
+                attn_mask = torch.cat([past_attn_mask, attn_mask], dim=1)
+            if key_padding_mask is not None:
+                key_padding_mask = torch.cat([past_key_padding_mask, key_padding_mask], dim=1)
+
         assert k is not None
         src_len = k.size(1)
 
@@ -297,25 +323,25 @@ class MultiheadAttention(nn.Module):
             assert key_padding_mask.size(0) == bsz
             assert key_padding_mask.size(1) == src_len
 
-        if self.add_zero_attn:
-            assert v is not None
-            src_len += 1
-            k = torch.cat([k, k.new_zeros((k.size(0), 1) + k.size()[2:])], dim=1)
-            v = torch.cat([v, v.new_zeros((v.size(0), 1) + v.size()[2:])], dim=1)
-            if attn_mask is not None:
-                attn_mask = torch.cat(
-                    [attn_mask, attn_mask.new_zeros(attn_mask.size(0), 1)], dim=1
-                )
-            if key_padding_mask is not None:
-                key_padding_mask = torch.cat(
-                    [
-                        key_padding_mask,
-                        torch.zeros(key_padding_mask.size(0), 1).type_as(
-                            key_padding_mask
-                        ),
-                    ],
-                    dim=1,
-                )
+        # if self.add_zero_attn:
+        #     assert v is not None
+        #     src_len += 1
+        #     k = torch.cat([k, k.new_zeros((k.size(0), 1) + k.size()[2:])], dim=1)
+        #     v = torch.cat([v, v.new_zeros((v.size(0), 1) + v.size()[2:])], dim=1)
+        #     if attn_mask is not None:
+        #         attn_mask = torch.cat(
+        #             [attn_mask, attn_mask.new_zeros(attn_mask.size(0), 1)], dim=1
+        #         )
+        #     if key_padding_mask is not None:
+        #         key_padding_mask = torch.cat(
+        #             [
+        #                 key_padding_mask,
+        #                 torch.zeros(key_padding_mask.size(0), 1).type_as(
+        #                     key_padding_mask
+        #                 ),
+        #             ],
+        #             dim=1,
+        #         )
 
         attn_weights = torch.bmm(q, k.transpose(1, 2))
         attn_weights = MultiheadAttention.apply_sparse_mask(attn_weights, tgt_len, src_len, bsz)
@@ -324,8 +350,8 @@ class MultiheadAttention(nn.Module):
 
         if attn_mask is not None:
             attn_mask = attn_mask.unsqueeze(0)
-            if self.onnx_trace:
-                attn_mask = attn_mask.repeat(attn_weights.size(0), 1, 1)
+            # if self.onnx_trace:
+            #     attn_mask = attn_mask.repeat(attn_weights.size(0), 1, 1)
             attn_weights += attn_mask
 
         if key_padding_mask is not None:
@@ -337,9 +363,10 @@ class MultiheadAttention(nn.Module):
                     float("-inf")
                 )
             else:
-                attn_weights = attn_weights.transpose(0, 2)
-                attn_weights = attn_weights.masked_fill(key_padding_mask, float('-inf'))
-                attn_weights = attn_weights.transpose(0, 2)
+                # attn_weights = attn_weights.transpose(0, 2)
+                # attn_weights = attn_weights.masked_fill(key_padding_mask, float('-inf'))
+                # attn_weights = attn_weights.transpose(0, 2)
+                pass
             attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
 
         if before_softmax:
@@ -354,12 +381,13 @@ class MultiheadAttention(nn.Module):
         assert v is not None
         attn = torch.bmm(attn_probs, v)
         assert list(attn.size()) == [bsz * self.num_heads, tgt_len, self.head_dim]
-        if self.onnx_trace and attn.size(1) == 1:
-            # when ONNX tracing a single decoder step (sequence length == 1)
-            # the transpose is a no-op copy before view, thus unnecessary
-            attn = attn.contiguous().view(tgt_len, bsz, embed_dim)
-        else:
-            attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
+        # if self.onnx_trace and attn.size(1) == 1:
+        #     # when ONNX tracing a single decoder step (sequence length == 1)
+        #     # the transpose is a no-op copy before view, thus unnecessary
+        #     attn = attn.contiguous().view(tgt_len, bsz, embed_dim)
+        # else:
+        #     attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
+        attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
         attn = self.out_proj(attn)
         attn_weights: Optional[Tensor] = None
         if need_weights:
