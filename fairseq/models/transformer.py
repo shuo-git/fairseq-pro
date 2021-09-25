@@ -406,7 +406,7 @@ class TransformerEncoder(FairseqEncoder):
             x = self.quant_noise(x)
         return x, embed
 
-    def forward(self, src_tokens, src_lengths, return_all_hiddens: bool = False):
+    def forward(self, src_tokens, src_lengths, return_all_hiddens: bool = False, **kwargs):
         """
         Args:
             src_tokens (LongTensor): tokens in the source language of shape
