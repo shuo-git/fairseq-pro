@@ -13,6 +13,8 @@ from fairseq.modules.quant_noise import quant_noise
 from fairseq.modules.fairseq_dropout import FairseqDropout
 from torch import Tensor
 
+import math
+
 class TransformerEncoderLayer(nn.Module):
     """Encoder layer block.
 
