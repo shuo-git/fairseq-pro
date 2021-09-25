@@ -26,6 +26,8 @@ from fairseq.data import (
 
 from fairseq.tasks import register_task, LegacyFairseqTask
 
+import torch
+
 EVAL_BLEU_ORDER = 4
 
 
