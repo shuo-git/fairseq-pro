@@ -915,11 +915,14 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         if self.layer_norm is not None:
             x = self.layer_norm(x)
 
+        if attend_kv_table:
+            last_tgt_k, last_tgt_v = self.plug_ins[-1](tgt_k, tgt_v)
+
         # T x B x C -> B x T x C
         x = x.transpose(0, 1)
 
-        if self.project_out_dim is not None:
-            x = self.project_out_dim(x)
+        # if self.project_out_dim is not None:
+        #     x = self.project_out_dim(x)
 
         return x, {"attn": [attn], "inner_states": inner_states}
 

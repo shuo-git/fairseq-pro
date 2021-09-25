@@ -386,6 +386,13 @@ class TranslationTask(LegacyFairseqTask):
         """Return the target :class:`~fairseq.data.Dictionary`."""
         return self.tgt_dict
 
+    def inference_step(self, generator, models, sample, prefix_tokens=None, constraints=None):
+        with torch.no_grad():
+            target_key = sample['net_input'].get('target_key', None)
+            target_value = sample['net_input'].get('target_value', None)
+            return generator.generate(models, sample, prefix_tokens=prefix_tokens, constraints=constraints,
+                                      target_key=target_key, target_value=target_value)
+
     def _inference_with_bleu(self, generator, sample, model):
         import sacrebleu
 
