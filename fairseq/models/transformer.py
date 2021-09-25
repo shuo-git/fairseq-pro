@@ -832,8 +832,8 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         tgt_k_toks = kwargs.get('target_key', None)
         tgt_v_toks = kwargs.get('target_value', None)
         if tgt_k_toks is not None and tgt_v_toks is not None:
-            tgt_k = self.embed_scale * self.embed_tokens(tgt_k_toks) * tgt_k_toks.eq(self.padding_idx).unsqueeze(-1)
-            tgt_v = self.embed_scale * self.embed_tokens(tgt_v_toks) * tgt_v_toks.eq(self.padding_idx).unsqueeze(-1)
+            tgt_k = self.embed_scale * self.embed_tokens(tgt_k_toks) * (~tgt_k_toks.eq(self.padding_idx)).unsqueeze(-1)
+            tgt_v = self.embed_scale * self.embed_tokens(tgt_v_toks) * (~tgt_v_toks.eq(self.padding_idx)).unsqueeze(-1)
             tgt_k = torch.sum(tgt_k, dim=1, keepdim=True)
             tgt_v = torch.sum(tgt_v, dim=1, keepdim=True)
             attend_kv_table = True
@@ -874,7 +874,9 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         if self.cross_self_attention or prev_output_tokens.eq(self.padding_idx).any():
             self_attn_padding_mask = prev_output_tokens.eq(self.padding_idx)
         if attend_kv_table and tgt_k_toks.eq(self.padding_idx).any():
-            attend_kv_table_padding_mask = torch.any(tgt_k_toks.eq(self.padding_idx), dim=1, keepdim=True)
+            attend_kv_table_padding_mask = torch.all(tgt_k_toks.eq(self.padding_idx), dim=1, keepdim=True)
+        else:
+            attend_kv_table_padding_mask = None
 
         # decoder layers
         attn: Optional[Tensor] = None
@@ -882,6 +884,8 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         for idx, layer in enumerate(self.layers):
             if attend_kv_table:
                 temp_tgt_k, temp_tgt_v = self.plug_ins[idx](tgt_k, tgt_v)
+            else:
+                temp_tgt_k = temp_tgt_v = None
 
             if incremental_state is None and not full_context_alignment:
                 self_attn_mask = self.buffered_future_mask(x)
