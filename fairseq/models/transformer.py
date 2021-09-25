@@ -832,8 +832,10 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         tgt_k_toks = kwargs.get('target_key', None)
         tgt_v_toks = kwargs.get('target_value', None)
         if tgt_k_toks is not None and tgt_v_toks is not None:
-            tgt_k = self.embed_scale * self.embed_tokens(tgt_k_toks)
-            tgt_v = self.embed_scale * self.embed_tokens(tgt_v_toks)
+            tgt_k = self.embed_scale * self.embed_tokens(tgt_k_toks) * tgt_k_toks.eq(self.padding_idx)
+            tgt_v = self.embed_scale * self.embed_tokens(tgt_v_toks) * tgt_v_toks.eq(self.padding_idx)
+            tgt_k = torch.sum(tgt_k, dim=1, keepdim=True)
+            tgt_v = torch.sum(tgt_v, dim=1, keepdim=True)
             attend_kv_table = True
         else:
             attend_kv_table = False
