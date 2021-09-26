@@ -929,7 +929,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             last_tgt_k, last_tgt_v = self.plug_ins[-1](tgt_k, tgt_v)
             plug_in_prob = utils.softmax(self.output_layer(last_tgt_v), dim=-1) # B x K x V, fp32
             plug_in_gate = torch.sigmoid(torch.bmm(x, last_tgt_k.transpose(1, 2))).float() # B x T x K, fp32
-            plug_in_prob = torch.bmm(plug_in_gate, plug_in_prob) + 1e-10 # B x T x V
+            plug_in_prob = torch.bmm(plug_in_gate, plug_in_prob) # B x T x V
         # if self.project_out_dim is not None:
         #     x = self.project_out_dim(x)
 
