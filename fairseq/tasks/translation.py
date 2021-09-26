@@ -401,8 +401,9 @@ class TranslationTask(LegacyFairseqTask):
         with torch.no_grad():
             target_key = sample['net_input'].get('target_key', None)
             target_value = sample['net_input'].get('target_value', None)
+            src_wil = sample['net_input'].get('src_wil', None)
             return generator.generate(models, sample, prefix_tokens=prefix_tokens, constraints=constraints,
-                                      target_key=target_key, target_value=target_value)
+                                      target_key=target_key, target_value=target_value, src_wil=src_wil)
 
     def _inference_with_bleu(self, generator, sample, model):
         import sacrebleu

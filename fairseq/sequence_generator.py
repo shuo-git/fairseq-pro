@@ -174,6 +174,7 @@ class SequenceGenerator(nn.Module):
         prefix_wil: Optional[Tensor] = None,
         target_key: Optional[Tensor] = None,
         target_value: Optional[Tensor] = None,
+        src_wil: Optional[Tensor] = None,
     ):
         incremental_states = torch.jit.annotate(
             List[Dict[str, Dict[str, Optional[Tensor]]]],
@@ -233,6 +234,8 @@ class SequenceGenerator(nn.Module):
         if target_key is not None and target_value is not None:
             target_key = target_key.index_select(0, new_order)
             target_value = target_value.index_select(0, new_order)
+        if src_wil is not None:
+            src_wil = src_wil.index_select(0, new_order)
         # ensure encoder_outs is a List.
         assert encoder_outs is not None
 
@@ -295,6 +298,8 @@ class SequenceGenerator(nn.Module):
                 )
                 if prefix_wil is not None:
                     prefix_wil = prefix_wil.index_select(0, reorder_state)
+                if src_wil is not None:
+                    src_wil = src_wil.index_select(0, reorder_state)
                 if target_key is not None and target_value is not None:
                     target_key = target_key.index_select(0, reorder_state)
                     target_value = target_value.index_select(0, reorder_state)
@@ -305,6 +310,7 @@ class SequenceGenerator(nn.Module):
                 incremental_states,
                 self.temperature,
                 prefix_wil=prefix_wil,
+                src_wil=src_wil,
                 target_key=target_key,
                 target_value=target_value,
             )
@@ -788,6 +794,7 @@ class EnsembleModel(nn.Module):
         incremental_states: List[Dict[str, Dict[str, Optional[Tensor]]]],
         temperature: float = 1.0,
         prefix_wil: Tensor = None,
+        src_wil: Tensor = None,
         target_key: Tensor = None,
         target_value: Tensor = None,
     ):
@@ -803,7 +810,7 @@ class EnsembleModel(nn.Module):
                     tokens,
                     encoder_out=encoder_out,
                     incremental_state=incremental_states[i],
-                    src_wil=prefix_wil,
+                    src_wil=src_wil,
                     target_key=target_key,
                     target_value=target_value,
                 )
@@ -811,7 +818,7 @@ class EnsembleModel(nn.Module):
                 decoder_out = model.decoder.forward(
                     tokens,
                     encoder_out=encoder_out,
-                    src_wil=prefix_wil,
+                    src_wil=src_wil,
                     target_key=target_key,
                     target_value=target_value,
                 )
