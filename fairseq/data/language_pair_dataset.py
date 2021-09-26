@@ -75,6 +75,10 @@ def collate(
     id = id.index_select(0, sort_order)
     src_tokens = src_tokens.index_select(0, sort_order)
 
+    source_wil = None
+    if samples[0].get('source_wil', None) is not None:
+        source_wil = merge_wil('source_wil', left_pad=left_pad_source)
+
     prev_output_tokens = None
     target = None
     target_wil = None
@@ -123,6 +127,9 @@ def collate(
         },
         'target': target,
     }
+    if source_wil is not None:
+        batch['net_input']['src_wil'] = source_wil.index_select(0, sort_order)
+
     if prev_output_tokens is not None:
         batch['net_input']['prev_output_tokens'] = prev_output_tokens.index_select(0, sort_order)
     if target_wil is not None:
@@ -221,6 +228,7 @@ class LanguagePairDataset(FairseqDataset):
         src_lang_id=None,
         tgt_lang_id=None,
         target_wil_dataset=None,
+        source_wil_dataset=None,
         target_key_sep=-1,
     ):
         if tgt_dict is not None:
@@ -248,6 +256,7 @@ class LanguagePairDataset(FairseqDataset):
         self.target_wil_dataset = target_wil_dataset
         if self.target_wil_dataset is not None:
             assert self.tgt_sizes is not None, "Target needed when target_wil_dataset is provided"
+        self.source_wil_dataset = source_wil_dataset
         self.constraints = constraints
         self.append_bos = append_bos
         self.eos = (eos if eos is not None else src_dict.eos())
@@ -343,6 +352,8 @@ class LanguagePairDataset(FairseqDataset):
             example["constraints"] = self.constraints[index]
         if self.target_wil_dataset is not None:
             example['target_wil'] = self.target_wil_dataset[index]
+        if self.source_wil_dataset is not None:
+            example['source_wil'] = self.source_wil_dataset[index]
         if tgt_key_item is not None and tgt_value_item is not None:
             example['target_key'] = tgt_key_item
             example['target_value'] = tgt_value_item
@@ -455,6 +466,8 @@ class LanguagePairDataset(FairseqDataset):
             self.align_dataset.prefetch(indices)
         if self.target_wil_dataset is not None:
             self.target_wil_dataset.prefetch(indices)
+        if self.source_wil_dataset is not None:
+            self.source_wil_dataset.prefetch(indices)
 
     def filter_indices_by_size(self, indices, max_sizes):
         """ Filter a list of sample indices. Remove those that are longer

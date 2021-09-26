@@ -179,6 +179,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         parser.add_argument('--word-dropout-prob', type=float, metavar='D', default=0,
                             help='word dropout probability')
         parser.add_argument('--target-kv-table', action='store_true', default=False)
+        parser.add_argument('--encoder-out-key', action='store_true', default=False)
         # fmt: on
 
     @classmethod
@@ -275,7 +276,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         which are not supported by TorchScript.
         """
         encoder_out = self.encoder(
-            src_tokens, src_lengths=src_lengths, return_all_hiddens=return_all_hiddens
+            src_tokens, src_lengths=src_lengths, return_all_hiddens=return_all_hiddens, **kwargs
         )
         decoder_out = self.decoder(
             prev_output_tokens,
@@ -724,7 +725,6 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             incremental_state=incremental_state,
             alignment_layer=alignment_layer,
             alignment_heads=alignment_heads,
-            prev_output_wil=kwargs.get('src_wil', None),
             **kwargs,
         )
         if not features_only:
@@ -739,7 +739,6 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         full_context_alignment: bool = False,
         alignment_layer: Optional[int] = None,
         alignment_heads: Optional[int] = None,
-        prev_output_wil = None,
         **kwargs,
     ):
         return self.extract_features_scriptable(
@@ -749,7 +748,6 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             full_context_alignment,
             alignment_layer,
             alignment_heads,
-            prev_output_wil=prev_output_wil,
             **kwargs,
         )
 
@@ -767,7 +765,6 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         full_context_alignment: bool = False,
         alignment_layer: Optional[int] = None,
         alignment_heads: Optional[int] = None,
-        prev_output_wil = None,
         **kwargs,
     ):
         """
@@ -792,20 +789,6 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         if alignment_layer is None:
             alignment_layer = self.num_layers - 1
 
-        if prev_output_wil is not None:
-            # Step1: align the lengths of tok and wil
-            if not self.training:
-                wil_length = prev_output_wil.shape[1]
-                tok_length = prev_output_tokens.shape[1]
-                if wil_length > tok_length:
-                    prev_output_wil = prev_output_wil[:, :tok_length]
-                elif wil_length < tok_length:
-                    ending_wil = prev_output_wil[:, -1:]
-                    prev_output_wil = torch.cat([prev_output_wil] + [ending_wil] * (tok_length - wil_length), dim=1)
-            # Step2: padding wil
-            prev_output_wil = prev_output_wil % self.args.segment_embed_mod
-            prev_output_wil[prev_output_tokens == self.padding_idx] = self.args.language_embedding_num
-
         # embed positions
         positions = (
             self.embed_positions(
@@ -815,6 +798,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             else None
         )
         # embed language indices
+        prev_output_wil = None
         if self.embed_languages is not None and prev_output_wil is not None:
             lang_indices = self.embed_languages(prev_output_wil)
         else:
@@ -832,7 +816,11 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         tgt_k_toks = kwargs.get('target_key', None)
         tgt_v_toks = kwargs.get('target_value', None)
         if tgt_k_toks is not None and tgt_v_toks is not None:
-            tgt_k = self.embed_scale * self.embed_tokens(tgt_k_toks) * (~tgt_k_toks.eq(self.padding_idx)).unsqueeze(-1)
+            if self.args.encoder_out_key:
+                encoder_out_h = encoder_out.encoder_out.transpose(0, 1)
+                tgt_k = encoder_out_h * kwargs.get('src_wil').unsqueeze(-1)
+            else:
+                tgt_k = self.embed_scale * self.embed_tokens(tgt_k_toks) * (~tgt_k_toks.eq(self.padding_idx)).unsqueeze(-1)
             tgt_v = self.embed_scale * self.embed_tokens(tgt_v_toks) * (~tgt_v_toks.eq(self.padding_idx)).unsqueeze(-1)
             tgt_k = torch.sum(tgt_k, dim=1, keepdim=True)
             tgt_v = torch.sum(tgt_v, dim=1, keepdim=True)

@@ -44,7 +44,8 @@ def load_langpair_dataset(
     truncate_source=False, append_source_id=False,
     num_buckets=0,
     shuffle=True,
-    target_word_int_label=None,
+    target_word_int_label=False,
+    source_word_int_label=False,
     target_key_sep=-1,
 ):
 
@@ -130,6 +131,12 @@ def load_langpair_dataset(
         if indexed_dataset.dataset_exists(target_wil_path, impl=dataset_impl):
             target_wil_dataset = data_utils.load_indexed_dataset(target_wil_path, None, dataset_impl)
 
+    source_wil_dataset = None
+    if source_word_int_label:
+        source_wil_path = os.path.join(data_path, '{}-word-int-label.{}-{}.{}'.format(split, src, tgt, src))
+        if indexed_dataset.dataset_exists(source_wil_path, impl=dataset_impl):
+            source_wil_dataset = data_utils.load_indexed_dataset(source_wil_path, None, dataset_impl)
+
     tgt_dataset_sizes = tgt_dataset.sizes if tgt_dataset is not None else None
     return LanguagePairDataset(
         src_dataset, src_dataset.sizes, src_dict,
@@ -140,6 +147,7 @@ def load_langpair_dataset(
         num_buckets=num_buckets,
         shuffle=shuffle,
         target_wil_dataset=target_wil_dataset,
+        source_wil_dataset=source_wil_dataset,
         target_key_sep=target_key_sep,
     )
 
@@ -296,6 +304,7 @@ class TranslationTask(LegacyFairseqTask):
             num_buckets=self.args.num_batch_buckets,
             shuffle=(split != 'test'),
             target_word_int_label=self.args.target_word_int_label if split == 'train' else False,
+            source_word_int_label=self.args.source_word_int_label,
             target_key_sep=self.args.target_key_sep,
         )
 
