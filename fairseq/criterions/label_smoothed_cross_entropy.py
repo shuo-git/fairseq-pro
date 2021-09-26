@@ -99,7 +99,7 @@ class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
 
     def compute_loss(self, model, net_output, sample, reduce=True):
         if net_output[1].get('plug_in_prob', None) is not None:
-            probs = model.get_normalized_probs(net_output, log_probs=False) + net_output[1]['plug_in_prob'] + 1e-10
+            probs = model.get_normalized_probs(net_output, log_probs=False) + net_output[1]['plug_in_prob'] + 1e-15
             lprobs = torch.log(probs)
         else:
             lprobs = model.get_normalized_probs(net_output, log_probs=True)
