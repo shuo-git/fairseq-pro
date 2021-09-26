@@ -861,7 +861,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         self_attn_padding_mask: Optional[Tensor] = None
         if self.cross_self_attention or prev_output_tokens.eq(self.padding_idx).any():
             self_attn_padding_mask = prev_output_tokens.eq(self.padding_idx)
-        if attend_kv_table and tgt_k_toks.eq(self.padding_idx).any():
+        if attend_kv_table:
             attend_kv_table_padding_mask = torch.all(tgt_k_toks.eq(self.padding_idx), dim=1, keepdim=True)
         else:
             attend_kv_table_padding_mask = None
@@ -918,10 +918,11 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             plug_in_prob = utils.softmax(self.output_layer(last_tgt_v), dim=-1) # B x K x V, fp32
             plug_in_gate = torch.sigmoid(torch.bmm(x, last_tgt_k.transpose(1, 2))).float() # B x T x K, fp32
             plug_in_prob = torch.bmm(plug_in_gate, plug_in_prob) # B x T x V
+            return x, {"attn": [attn], "inner_states": inner_states, "plug_in_prob": plug_in_prob}
         # if self.project_out_dim is not None:
         #     x = self.project_out_dim(x)
 
-        return x, {"attn": [attn], "inner_states": inner_states, "plug_in_prob": plug_in_prob}
+        return x, {"attn": [attn], "inner_states": inner_states}
 
     def output_layer(self, features):
         """Project features to the vocabulary size."""
