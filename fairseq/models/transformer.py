@@ -919,16 +919,21 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         if self.layer_norm is not None:
             x = self.layer_norm(x)
 
-        if attend_kv_table:
-            last_tgt_k, last_tgt_v = self.plug_ins[-1](tgt_k, tgt_v)
-
         # T x B x C -> B x T x C
         x = x.transpose(0, 1)
+        if attend_kv_table:
+            tgt_k = tgt_k.transpose(0, 1)
+            tgt_v = tgt_v.transpose(0, 1)
 
+        if attend_kv_table:
+            last_tgt_k, last_tgt_v = self.plug_ins[-1](tgt_k, tgt_v)
+            plug_in_prob = utils.softmax(self.output_layer(last_tgt_v), dim=-1) # B x K x V, fp32
+            plug_in_gate = 2 * torch.sigmoid(torch.bmm(x, last_tgt_k.transpose(1, 2))).float() # B x T x K, fp32
+            plug_in_prob = torch.bmm(plug_in_gate, plug_in_prob) + 1e-20 # B x T x V
         # if self.project_out_dim is not None:
         #     x = self.project_out_dim(x)
 
-        return x, {"attn": [attn], "inner_states": inner_states}
+        return x, {"attn": [attn], "inner_states": inner_states, "plug_in_prob": plug_in_prob}
 
     def output_layer(self, features):
         """Project features to the vocabulary size."""
