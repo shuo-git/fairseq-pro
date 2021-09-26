@@ -148,9 +148,11 @@ class Target_Plug_In_Layer_Type1(nn.Module):
         self.v_proj = nn.Linear(my_dim, my_dim, bias=bias)
         nn.init.xavier_uniform_(self.k_proj.weight, gain=1 / math.sqrt(2))
         nn.init.xavier_uniform_(self.v_proj.weight, gain=1 / math.sqrt(2))
+        self.k_layer_norm = LayerNorm(my_dim)
+        self.v_layer_norm = LayerNorm(my_dim)
 
     def forward(self, k, v):
-        return self.k_proj(k), self.v_proj(v)
+        return self.k_layer_norm(self.k_proj(k)), self.v_layer_norm(self.v_proj(v))
 
 
 class Target_Plug_In_Layer_Type2(nn.Module):
