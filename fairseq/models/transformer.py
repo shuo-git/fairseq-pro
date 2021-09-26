@@ -816,7 +816,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         tgt_k_toks = kwargs.get('target_key', None)
         tgt_v_toks = kwargs.get('target_value', None)
         if tgt_k_toks is not None and tgt_v_toks is not None:
-            if self.args.encoder_out_key:
+            if self.args.encoder_out_key and kwargs.get('src_wil', None) is not None:
                 encoder_out_h = encoder_out.encoder_out.transpose(0, 1)
                 tgt_k = encoder_out_h * kwargs.get('src_wil').unsqueeze(-1)
             else:
