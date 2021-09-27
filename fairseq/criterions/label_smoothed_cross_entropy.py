@@ -82,6 +82,8 @@ class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
         net_output = model(**sample['net_input'])
         loss, nll_loss, activate_toks = self.compute_loss(model, net_output, sample, reduce=reduce)
         sample_size = sample['target'].size(0) if self.sentence_avg else sample['ntokens']
+        if activate_toks is not None:
+            sample_size = activate_toks
         logging_output = {
             'loss': loss.data,
             'nll_loss': nll_loss.data,
@@ -89,10 +91,6 @@ class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
             'nsentences': sample['target'].size(0),
             'sample_size': sample_size,
         }
-        if activate_toks is not None:
-            res_sample_size = activate_toks
-        else:
-            res_sample_size = sample_size
         return loss, sample_size, logging_output
 
     def compute_loss(self, model, net_output, sample, reduce=True):
