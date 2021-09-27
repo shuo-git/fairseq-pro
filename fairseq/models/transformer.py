@@ -914,6 +914,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             tgt_v = tgt_v.transpose(0, 1)
 
         if attend_kv_table:
+            # In the next version the softmax plug-in with excluding the keys
             last_tgt_k, _ = self.plug_ins[-1](tgt_k, tgt_v)
             last_tgt_v = self.embed_scale * self.embed_tokens(tgt_v_toks) * (~tgt_v_toks.eq(self.padding_idx)).unsqueeze(-1)
             plug_in_prob = utils.softmax(self.output_layer(last_tgt_v), dim=-1) # B x T(v) x V, fp32
