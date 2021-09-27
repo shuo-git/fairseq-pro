@@ -841,8 +841,10 @@ class EnsembleModel(nn.Module):
                 decoder_out[0][:, -1:, :].div_(temperature),
                 None if decoder_len <= 1 else decoder_out[1],
             )
-            if decoder_out_tuple[1].get('plug_in_prob', None) is not None:
-                probs = model.get_normalized_probs(decoder_out_tuple, log_probs=False) + decoder_out_tuple[1]['plug_in_prob'] + 1e-15
+            if decoder_out_tuple[1].get('plug_in_prob', None) is not None and decoder_out_tuple[1].get('plug_in_gate', None) is not None:
+                model_probs = model.get_normalized_probs(decoder_out_tuple, log_probs=False) * decoder_out_tuple[1]['plug_in_gate']
+                probs = model_probs + decoder_out_tuple[1]['plug_in_prob'] + 1e-15
+                probs = torch.min(torch.Tensor([1.0]).to(probs), probs)
                 probs = torch.log(probs)
             else:
                 probs = model.get_normalized_probs(

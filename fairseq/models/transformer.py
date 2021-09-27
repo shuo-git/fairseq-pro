@@ -920,7 +920,8 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             plug_in_prob = torch.min(torch.Tensor([0.8]).to(plug_in_prob), plug_in_prob.max(dim=1, keepdim=True).values) # B x 1 x V
             plug_in_gate = torch.sigmoid(torch.bmm(x, last_tgt_k.transpose(1, 2))).float() # B x T x 1, fp32
             plug_in_prob = torch.bmm(plug_in_gate, plug_in_prob) # B x T x V
-            return x, {"attn": [attn], "inner_states": inner_states, "plug_in_prob": plug_in_prob}
+            plug_in_gate = plug_in_gate.sum(dim=-1, keepdim=False)
+            return x, {"attn": [attn], "inner_states": inner_states, "plug_in_prob": plug_in_prob, "plug_in_gate": plug_in_gate}
         # if self.project_out_dim is not None:
         #     x = self.project_out_dim(x)
 
