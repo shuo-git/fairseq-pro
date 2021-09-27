@@ -93,7 +93,7 @@ class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
             res_sample_size = activate_toks
         else:
             res_sample_size = sample_size
-        return loss, res_sample_size, logging_output
+        return loss, sample_size, logging_output
 
     def compute_loss(self, model, net_output, sample, reduce=True):
         if net_output[1].get('plug_in_prob', None) is not None:
