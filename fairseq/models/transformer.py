@@ -942,7 +942,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             if incremental_state is not None:
                 assert saved_state is not None
                 may_end_mask = torch.all(tgt_v_toks.eq(self.padding_idx), dim=-1, keepdim=True) # B x 1
-                may_end_idx = (self.padding_idx * may_end_mask + 2 * (1 - may_end_mask)).unsqueeze(-1).long()
+                may_end_idx = (self.padding_idx * may_end_mask + 2 * (~may_end_mask)).unsqueeze(-1).long()
                 may_end_src = torch.zeros_like(may_end_idx).float() + 1e-8
                 model_prob = model_prob.scatter(dim=-1, index=may_end_idx, src=may_end_src)
                 selected_tok = model_prob.argmax(dim=-1) # B x 1
