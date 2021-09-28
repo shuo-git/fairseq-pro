@@ -933,12 +933,12 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             last_tgt_v = self.embed_scale * self.embed_tokens(tgt_v_toks) * (~tgt_v_toks.eq(self.padding_idx)).unsqueeze(-1) # B x T(v) x C
             cos_sim = _cosine_similarity(x, last_tgt_v) # B x T x T(v), need to be regularized
             plug_in_sim = cos_sim.max(dim=-1, keepdim=True).values # B x T x 1
-            plug_in_sim = torch.max(torch.ones_like(plug_in_sim) * 1e-8, plug_in_sim)
+            plug_in_sim = torch.max(torch.ones_like(plug_in_sim) * 1e-8, plug_in_sim) # no negative plug-in-sim
             plug_in_v_idx = cos_sim.argmax(dim=-1) # B x T
             plug_in_v = tgt_v_toks.gather(index=plug_in_v_idx, dim=-1).unsqueeze(-1) # B x T x 1
             plug_in_prob = torch.zeros_like(model_prob).scatter(dim=-1, index=plug_in_v, src=plug_in_sim)
-            # model_prob += plug_in_prob
-            model_prob = torch.min(torch.ones_like(model_prob), model_prob)
+            model_prob += plug_in_prob
+            # model_prob = torch.min(torch.ones_like(model_prob), model_prob)
             model_prob = torch.max(torch.ones_like(model_prob) * 1e-8, model_prob)
             if incremental_state is not None:
                 assert saved_state is not None
