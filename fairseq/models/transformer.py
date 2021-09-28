@@ -727,8 +727,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             alignment_heads=alignment_heads,
             **kwargs,
         )
-        if not features_only:
-            x = self.output_layer(x)
+        
         return x, extra
 
     def extract_features(
@@ -913,20 +912,28 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             tgt_k = tgt_k.transpose(0, 1)
             tgt_v = tgt_v.transpose(0, 1)
 
-        if attend_kv_table:
-            # In the next version the softmax plug-in with excluding the keys
-            last_tgt_k, _ = self.plug_ins[-1](tgt_k, tgt_v)
-            last_tgt_v = self.embed_scale * self.embed_tokens(tgt_v_toks) * (~tgt_v_toks.eq(self.padding_idx)).unsqueeze(-1)
-            plug_in_prob = utils.softmax(self.output_layer(last_tgt_v), dim=-1) # B x T(v) x V, fp32
-            plug_in_prob = torch.min(torch.Tensor([0.8]).to(plug_in_prob), plug_in_prob.max(dim=1, keepdim=True).values) # B x 1 x V
-            plug_in_gate = torch.sigmoid(torch.bmm(x, last_tgt_k.transpose(1, 2))).float() # B x T x 1, fp32
-            plug_in_prob = torch.bmm(plug_in_gate, plug_in_prob) # B x T x V
-            plug_in_gate = plug_in_gate.sum(dim=-1, keepdim=True)
-            return x, {"attn": [attn], "inner_states": inner_states, "plug_in_prob": plug_in_prob, "plug_in_gate": plug_in_gate}
-        # if self.project_out_dim is not None:
-        #     x = self.project_out_dim(x)
+        def _cosine_similarity(am, bm, eps=1e-8):
+            a_n, b_n = a.norm(dim=-1, keepdim=True), b.norm(dim=-1, keepdim=True)
+            a_norm = a / torch.max(a_n, eps * torch.ones_like(a_n))
+            b_norm = b / torch.max(b_n, eps * torch.ones_like(b_n))
+            sim_mt = torch.bmm(a_norm, b_norm.transpose(1, 2))
+            return sim_mt
 
-        return x, {"attn": [attn], "inner_states": inner_states}
+        logits = self.output_layer(x)
+        model_prob = utils.softmax(logits, dim=-1) # B x T x V
+
+        if attend_kv_table:
+            last_tgt_v = self.embed_scale * self.embed_tokens(tgt_v_toks) * (~tgt_v_toks.eq(self.padding_idx)).unsqueeze(-1) # B x T(v) x C
+            cos_sim = _cosine_similarity(x, last_tgt_v) # B x T x T(v), need to be regularized
+            plug_in_sim = cos_sim.max(dim=-1, keepdim=True) # B x T x 1
+            plug_in_v_idx = cos_sim.argmax(dim=-1) # B x T
+            plug_in_v = tgt_v_toks.gather(index=plug_in_v_idx, dim=-1).unsqueeze(-1) # B x T x 1
+            plug_in_prob = torch.zeros_like(model_prob).scatter(dim=-1, index=plug_in_v, src=plug_in_sim)
+            model_prob += plug_in_prob
+            model_prob = torch.min(torch.ones_like(model_prob), model_prob)
+            model_prob = torch.max(torch.ones_like(model_prob) * 1e-8, model_prob)
+
+        return logits, {"attn": [attn], "inner_states": inner_states, "model_prob": model_prob}
 
     def output_layer(self, features):
         """Project features to the vocabulary size."""
