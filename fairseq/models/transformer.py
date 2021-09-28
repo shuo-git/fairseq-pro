@@ -928,28 +928,28 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         logits = self.output_layer(x)
         model_prob = utils.softmax(logits, dim=-1) + 1e-8 # B x T x V
 
-        # if attend_kv_table:
-        #     last_tgt_v = self.embed_scale * self.embed_tokens(tgt_v_toks) * (~tgt_v_toks.eq(self.padding_idx)).unsqueeze(-1) # B x T(v) x C
-        #     cos_sim = _cosine_similarity(x, last_tgt_v) # B x T x T(v), need to be regularized
-        #     plug_in_sim = cos_sim.max(dim=-1, keepdim=True).values # B x T x 1
-        #     plug_in_sim = torch.max(torch.ones_like(plug_in_sim) * 1e-8, plug_in_sim)
-        #     plug_in_v_idx = cos_sim.argmax(dim=-1) # B x T
-        #     plug_in_v = tgt_v_toks.gather(index=plug_in_v_idx, dim=-1).unsqueeze(-1) # B x T x 1
-        #     plug_in_prob = torch.zeros_like(model_prob).scatter(dim=-1, index=plug_in_v, src=plug_in_sim)
-        #     # model_prob += plug_in_prob
-        #     model_prob = torch.min(torch.ones_like(model_prob), model_prob)
-        #     model_prob = torch.max(torch.ones_like(model_prob) * 1e-8, model_prob)
-        #     if incremental_state is not None:
-        #         assert saved_state is not None
-        #         may_end_mask = torch.all(tgt_v_toks.eq(self.padding_idx), dim=-1, keepdim=True) # B x 1
-        #         may_end_idx = (self.padding_idx * may_end_mask + 2 * (~may_end_mask)).unsqueeze(-1).long()
-        #         may_end_src = torch.zeros_like(may_end_idx).float() + 1e-8
-        #         # model_prob = model_prob.scatter(dim=-1, index=may_end_idx, src=may_end_src)
-        #         selected_tok = model_prob.argmax(dim=-1) # B x 1
-        #         selected_mask = tgt_v_toks.eq(selected_tok)
-        #         new_tgt_v_toks = tgt_v_toks * (~selected_mask) + self.padding_idx * selected_mask # B x T(v)
-        #         saved_state['target_value'] = new_tgt_v_toks
-        #         self.set_incremental_state(incremental_state, 'plug_in_state', saved_state)
+        if attend_kv_table:
+            last_tgt_v = self.embed_scale * self.embed_tokens(tgt_v_toks) * (~tgt_v_toks.eq(self.padding_idx)).unsqueeze(-1) # B x T(v) x C
+            cos_sim = _cosine_similarity(x, last_tgt_v) # B x T x T(v), need to be regularized
+            plug_in_sim = cos_sim.max(dim=-1, keepdim=True).values # B x T x 1
+            plug_in_sim = torch.max(torch.ones_like(plug_in_sim) * 1e-8, plug_in_sim)
+            plug_in_v_idx = cos_sim.argmax(dim=-1) # B x T
+            plug_in_v = tgt_v_toks.gather(index=plug_in_v_idx, dim=-1).unsqueeze(-1) # B x T x 1
+            plug_in_prob = torch.zeros_like(model_prob).scatter(dim=-1, index=plug_in_v, src=plug_in_sim)
+            # model_prob += plug_in_prob
+            model_prob = torch.min(torch.ones_like(model_prob), model_prob)
+            model_prob = torch.max(torch.ones_like(model_prob) * 1e-8, model_prob)
+            # if incremental_state is not None:
+            #     assert saved_state is not None
+            #     may_end_mask = torch.all(tgt_v_toks.eq(self.padding_idx), dim=-1, keepdim=True) # B x 1
+            #     may_end_idx = (self.padding_idx * may_end_mask + 2 * (~may_end_mask)).unsqueeze(-1).long()
+            #     may_end_src = torch.zeros_like(may_end_idx).float() + 1e-8
+            #     # model_prob = model_prob.scatter(dim=-1, index=may_end_idx, src=may_end_src)
+            #     selected_tok = model_prob.argmax(dim=-1) # B x 1
+            #     selected_mask = tgt_v_toks.eq(selected_tok)
+            #     new_tgt_v_toks = tgt_v_toks * (~selected_mask) + self.padding_idx * selected_mask # B x T(v)
+            #     saved_state['target_value'] = new_tgt_v_toks
+            #     self.set_incremental_state(incremental_state, 'plug_in_state', saved_state)
 
         return logits, {"attn": [attn], "inner_states": inner_states, "model_prob": model_prob}
 
