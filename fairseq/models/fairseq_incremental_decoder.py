@@ -91,7 +91,7 @@ class FairseqIncrementalDecoder(FairseqDecoder):
         :class:`fairseq.sequence_generator.SequenceGenerator` instead of
         calling :func:`reorder_incremental_state` directly.
         """
-        self.reorder_incremental_state(incremental_state, new_order)
+        # self.reorder_incremental_state(incremental_state, new_order)
         for module in self.modules():
             if hasattr(module, 'reorder_incremental_state'):
                 result = module.reorder_incremental_state(incremental_state, new_order)
