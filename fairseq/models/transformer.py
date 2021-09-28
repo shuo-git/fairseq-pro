@@ -935,7 +935,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             plug_in_v_idx = cos_sim.argmax(dim=-1) # B x T
             plug_in_v = tgt_v_toks.gather(index=plug_in_v_idx, dim=-1).unsqueeze(-1) # B x T x 1
             plug_in_prob = torch.zeros_like(model_prob).scatter(dim=-1, index=plug_in_v, src=plug_in_sim)
-            model_prob += plug_in_prob
+            # model_prob += plug_in_prob
             model_prob = torch.min(torch.ones_like(model_prob), model_prob)
             model_prob = torch.max(torch.ones_like(model_prob) * 1e-8, model_prob)
             if saved_state is not None:
