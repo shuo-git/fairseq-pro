@@ -814,6 +814,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         x = self.embed_scale * self.embed_tokens(prev_output_tokens)
         tgt_k_toks = kwargs.get('target_key', None)
         tgt_v_toks = kwargs.get('target_value', None)
+        orig_tgt_v_toks = kwargs.get('target_value', None)
         if incremental_state is not None:
             saved_state = self.get_incremental_state(incremental_state, "plug_in_state")
             if saved_state is not None:
@@ -826,7 +827,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                 tgt_k = encoder_out_h * kwargs.get('src_wil').unsqueeze(-1)
             else:
                 tgt_k = self.embed_scale * self.embed_tokens(tgt_k_toks) * (~tgt_k_toks.eq(self.padding_idx)).unsqueeze(-1)
-            tgt_v = self.embed_scale * self.embed_tokens(tgt_v_toks) * (~tgt_v_toks.eq(self.padding_idx)).unsqueeze(-1)
+            tgt_v = self.embed_scale * self.embed_tokens(orig_tgt_v_toks) * (~orig_tgt_v_toks.eq(self.padding_idx)).unsqueeze(-1)
             tgt_k = torch.sum(tgt_k, dim=1, keepdim=True)
             tgt_v = torch.sum(tgt_v, dim=1, keepdim=True)
             attend_kv_table = True
