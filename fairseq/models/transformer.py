@@ -814,6 +814,12 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         x = self.embed_scale * self.embed_tokens(prev_output_tokens)
         tgt_k_toks = kwargs.get('target_key', None)
         tgt_v_toks = kwargs.get('target_value', None)
+        if incremental_state is not None:
+            saved_state = self.get_incremental_state(incremental_state, "plug_in_state")
+            if saved_state is not None:
+                tgt_v_toks = saved_state['target_value']
+            else:
+                saved_state = {}
         if tgt_k_toks is not None and tgt_v_toks is not None:
             if self.args.encoder_out_key and kwargs.get('src_wil', None) is not None:
                 encoder_out_h = encoder_out.encoder_out.transpose(0, 1)
@@ -932,8 +938,30 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             model_prob += plug_in_prob
             model_prob = torch.min(torch.ones_like(model_prob), model_prob)
             model_prob = torch.max(torch.ones_like(model_prob) * 1e-8, model_prob)
+            if saved_state is not None:
+                selected_tok = model_prob.argmax(dim=-1) # B x 1
+                selected_mask = tgt_v_toks.eq(selected_tok)
+                new_tgt_v_toks = tgt_v_toks * (~selected_mask) + self.padding_idx * selected_mask # B x T(v)
+                saved_state['target_value'] = new_tgt_v_toks
+                assert incremental_state is not None
+                self.set_incremental_state(incremental_state, 'plug_in_state', saved_state)
 
         return logits, {"attn": [attn], "inner_states": inner_states, "model_prob": model_prob}
+
+    @torch.jit.export
+    def reorder_incremental_state(
+        self,
+        incremental_state: Dict[str, Dict[str, Optional[Tensor]]],
+        new_order: Tensor,
+    ):
+        input_buffer = self.get_incremental_state(incremental_state, 'plug_in_state')
+        if input_buffer is not None:
+            for k in input_buffer:
+                input_buffer_k = input_buffer[k]
+                if input_buffer_k is not None:
+                    input_buffer[k] = input_buffer_k.index_select(0, new_order)
+            incremental_state = self.set_incremental_state(incremental_state, 'plug_in_state', input_buffer)
+        return incremental_state
 
     def output_layer(self, features):
         """Project features to the vocabulary size."""
