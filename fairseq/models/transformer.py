@@ -939,12 +939,12 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             # model_prob += plug_in_prob
             model_prob = torch.min(torch.ones_like(model_prob), model_prob)
             model_prob = torch.max(torch.ones_like(model_prob) * 1e-8, model_prob)
-            if saved_state is not None:
+            if incremental_state is not None:
+                assert saved_state is not None
                 selected_tok = model_prob.argmax(dim=-1) # B x 1
                 selected_mask = tgt_v_toks.eq(selected_tok)
                 new_tgt_v_toks = tgt_v_toks * (~selected_mask) + self.padding_idx * selected_mask # B x T(v)
                 saved_state['target_value'] = new_tgt_v_toks
-                assert incremental_state is not None
                 self.set_incremental_state(incremental_state, 'plug_in_state', saved_state)
 
         return logits, {"attn": [attn], "inner_states": inner_states, "model_prob": model_prob}
