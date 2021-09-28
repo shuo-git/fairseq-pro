@@ -913,9 +913,9 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             tgt_v = tgt_v.transpose(0, 1)
 
         def _cosine_similarity(am, bm, eps=1e-8):
-            a_n, b_n = a.norm(dim=-1, keepdim=True), b.norm(dim=-1, keepdim=True)
-            a_norm = a / torch.max(a_n, eps * torch.ones_like(a_n))
-            b_norm = b / torch.max(b_n, eps * torch.ones_like(b_n))
+            a_n, b_n = am.norm(dim=-1, keepdim=True), bm.norm(dim=-1, keepdim=True)
+            a_norm = am / torch.max(a_n, eps * torch.ones_like(a_n))
+            b_norm = bm / torch.max(b_n, eps * torch.ones_like(b_n))
             sim_mt = torch.bmm(a_norm, b_norm.transpose(1, 2))
             return sim_mt
 
