@@ -77,7 +77,8 @@ def collate(
 
     source_wil = None
     if samples[0].get('source_wil', None) is not None:
-        source_wil = merge_wil('source_wil', left_pad=left_pad_source)
+        source_wil = merge_wil('source_wil', left_pad=left_pad_source,
+        pad_to_length=pad_to_length['source'] if pad_to_length is not None else None)
 
     prev_output_tokens = None
     target = None
@@ -96,7 +97,8 @@ def collate(
         ntokens = tgt_lengths.sum().item()
 
         if samples[0].get('target_wil', None) is not None:
-            target_wil = merge_wil('target_wil', left_pad=left_pad_target)
+            target_wil = merge_wil('target_wil', left_pad=left_pad_target,
+                pad_to_length=pad_to_length['target'] if pad_to_length is not None else None)
 
         if samples[0].get('target_key', None) is not None and \
            samples[0].get('target_value', None) is not None:
