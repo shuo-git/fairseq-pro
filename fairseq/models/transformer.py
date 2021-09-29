@@ -821,12 +821,12 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                 tgt_v_toks = saved_state['target_value']
             else:
                 saved_state = {'target_value': tgt_v_toks}
-            # # Decoding Rule-1 by Shuo
-            # selected_tok = prev_output_tokens # B x 1
-            # selected_mask = tgt_v_toks.eq(selected_tok)
-            # tgt_v_toks = tgt_v_toks * (~selected_mask) + self.padding_idx * selected_mask # B x T(v)
-            # saved_state['target_value'] = tgt_v_toks
-            # self.set_incremental_state(incremental_state, 'plug_in_state', saved_state)
+            # Decoding Rule-1 by Shuo
+            selected_tok = prev_output_tokens # B x 1
+            selected_mask = tgt_v_toks.eq(selected_tok)
+            tgt_v_toks = tgt_v_toks * (~selected_mask) + self.padding_idx * selected_mask # B x T(v)
+            saved_state['target_value'] = tgt_v_toks
+            self.set_incremental_state(incremental_state, 'plug_in_state', saved_state)
         if tgt_k_toks is not None and tgt_v_toks is not None:
             if self.args.encoder_out_key and kwargs.get('src_wil', None) is not None:
                 encoder_out_h = encoder_out.encoder_out.transpose(0, 1)
