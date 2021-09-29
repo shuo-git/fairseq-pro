@@ -686,7 +686,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             )
 
     def build_plug_in_layer(self, my_dim, head_num):
-        return Target_Plug_In_Layer_Type1(my_dim, head_num)
+        return Target_Plug_In_Layer_Type2(my_dim, head_num)
 
     def build_decoder_layer(self, args, no_encoder_attn=False):
         return TransformerDecoderLayer(args, no_encoder_attn)

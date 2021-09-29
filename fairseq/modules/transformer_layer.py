@@ -158,18 +158,23 @@ class Target_Plug_In_Layer_Type1(nn.Module):
 class Target_Plug_In_Layer_Type2(nn.Module):
     def __init__(self, my_dim, head_num, bias=True):
         super().__init__()
-        self.scaling = (my_dim // head_num) ** -0.5
-        self.fc1 = nn.Linear(my_dim, my_dim * 4, bias=bias)
-        self.fc2 = nn.Linear(my_dim * 4, my_dim, bias=bias)
-        nn.init.xavier_uniform_(self.fc1.weight, gain=1 / math.sqrt(2))
-        nn.init.xavier_uniform_(self.fc2.weight, gain=1 / math.sqrt(2))
-        self.activation_fn = utils.get_activation_fn('tanh')
+        self.k_fc1 = nn.Linear(my_dim, my_dim * 4, bias=bias)
+        self.k_fc2 = nn.Linear(my_dim * 4, my_dim, bias=bias)
+        self.v_fc1 = nn.Linear(my_dim, my_dim * 4, bias=bias)
+        self.v_fc2 = nn.Linear(my_dim * 4, my_dim, bias=bias)
+        nn.init.xavier_uniform_(self.k_fc1.weight, gain=1 / math.sqrt(2))
+        nn.init.xavier_uniform_(self.k_fc2.weight, gain=1 / math.sqrt(2))
+        nn.init.xavier_uniform_(self.v_fc1.weight, gain=1 / math.sqrt(2))
+        nn.init.xavier_uniform_(self.v_fc2.weight, gain=1 / math.sqrt(2))
+        self.k_activation_fn = utils.get_activation_fn('tanh')
+        self.v_activation_fn = utils.get_activation_fn('tanh')
+        self.k_layer_norm = LayerNorm(my_dim)
+        self.v_layer_norm = LayerNorm(my_dim)
 
-    def forward(self, x):
-        x = self.activation_fn(self.fc1(x))
-        x = self.fc2(x)
-        x *= self.scaling
-        return x
+    def forward(self, k, v):
+        k = self.k_layer_norm(self.k_fc2(self.k_activation_fn(self.k_fc1(k))))
+        v = self.v_layer_norm(self.v_fc2(self.v_activation_fn(self.v_fc1(v))))
+        return k, v
 
 
 class TransformerDecoderLayer(nn.Module):
