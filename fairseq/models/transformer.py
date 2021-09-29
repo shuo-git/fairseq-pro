@@ -820,12 +820,13 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             if saved_state is not None:
                 tgt_v_toks = saved_state['target_value']
             else:
-                saved_state = {}
-            selected_tok = prev_output_tokens # B x 1
-            selected_mask = tgt_v_toks.eq(selected_tok)
-            tgt_v_toks = tgt_v_toks * (~selected_mask) + self.padding_idx * selected_mask # B x T(v)
-            saved_state['target_value'] = tgt_v_toks
-            self.set_incremental_state(incremental_state, 'plug_in_state', saved_state)
+                saved_state = {'target_value': tgt_v_toks}
+            # # Decoding Rule-1 by Shuo
+            # selected_tok = prev_output_tokens # B x 1
+            # selected_mask = tgt_v_toks.eq(selected_tok)
+            # tgt_v_toks = tgt_v_toks * (~selected_mask) + self.padding_idx * selected_mask # B x T(v)
+            # saved_state['target_value'] = tgt_v_toks
+            # self.set_incremental_state(incremental_state, 'plug_in_state', saved_state)
         if tgt_k_toks is not None and tgt_v_toks is not None:
             if self.args.encoder_out_key and kwargs.get('src_wil', None) is not None:
                 encoder_out_h = encoder_out.encoder_out.transpose(0, 1)
@@ -947,10 +948,11 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             model_prob = torch.max(torch.ones_like(model_prob) * 1e-8, model_prob)
             if incremental_state is not None:
                 assert saved_state is not None
-                may_end_mask = torch.all(tgt_v_toks.eq(self.padding_idx), dim=-1, keepdim=True) # B x 1
-                may_end_idx = (self.padding_idx * may_end_mask + self.dictionary.eos() * (~may_end_mask)).unsqueeze(-1).long() # B x 1 x 1
-                may_end_src = torch.zeros_like(may_end_idx).float() + 1e-8
-                model_prob = model_prob.scatter(dim=-1, index=may_end_idx, src=may_end_src)
+                # # Decoding Rule-2 by Shuo
+                # may_end_mask = torch.all(tgt_v_toks.eq(self.padding_idx), dim=-1, keepdim=True) # B x 1
+                # may_end_idx = (self.padding_idx * may_end_mask + self.dictionary.eos() * (~may_end_mask)).unsqueeze(-1).long() # B x 1 x 1
+                # may_end_src = torch.zeros_like(may_end_idx).float() + 1e-8
+                # model_prob = model_prob.scatter(dim=-1, index=may_end_idx, src=may_end_src)
 
         return logits, {"attn": [attn], "inner_states": inner_states, "model_prob": model_prob}
 
