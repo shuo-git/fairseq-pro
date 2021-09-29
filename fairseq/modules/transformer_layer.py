@@ -152,7 +152,8 @@ class Target_Plug_In_Layer_Type1(nn.Module):
         self.v_layer_norm = LayerNorm(my_dim)
 
     def forward(self, k, v):
-        return self.k_layer_norm(self.k_proj(k)), self.v_layer_norm(self.v_proj(v))
+        # return self.k_layer_norm(self.k_proj(k)), self.v_layer_norm(self.v_proj(v))
+        return self.k_proj(k), self.v_proj(v)
 
 
 class Target_Plug_In_Layer_Type2(nn.Module):
