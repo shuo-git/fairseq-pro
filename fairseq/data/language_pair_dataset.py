@@ -349,10 +349,10 @@ class LanguagePairDataset(FairseqDataset):
 
             src_start = _getsubidx(src_item.tolist(), tgt_key_item.tolist())
             tgt_start = _getsubidx(tgt_item.tolist(), tgt_value_item.tolist())
-            src_wil_item = torch.zeros_like(src_item).float()
-            src_wil_item[src_start:src_start+tgt_key_item.shape[0]] = 1.
-            tgt_wil_item = torch.zeros_like(tgt_item).float()
-            tgt_wil_item[tgt_start:tgt_start+tgt_value_item.shape[0]] = 1.
+            src_wil_item = torch.zeros_like(src_item)
+            src_wil_item[src_start:src_start+tgt_key_item.shape[0]] = 1
+            tgt_wil_item = torch.zeros_like(tgt_item)
+            tgt_wil_item[tgt_start:tgt_start+tgt_value_item.shape[0]] = 1
         else:
             tgt_key_item = None
             tgt_value_item = None
