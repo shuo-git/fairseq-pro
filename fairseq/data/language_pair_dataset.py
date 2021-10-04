@@ -339,6 +339,20 @@ class LanguagePairDataset(FairseqDataset):
             tgt_key_item = tgt_item[:sep_idx1]
             tgt_value_item = tgt_item[sep_idx1+1:sep_idx2]
             tgt_item = tgt_item[sep_idx2+1:]
+
+            def _getsubidx(_x, _y):
+                _l1, _l2 = len(_x), len(_y)
+                for _i in range(_l1 - _l2 + 1):
+                    if _x[_i:_i+_l2] == _y:
+                        return _i
+                return -1
+
+            src_start = _getsubidx(src_item.tolist(), tgt_key_item.tolist())
+            tgt_start = _getsubidx(tgt_item.tolist(), tgt_value_item.tolist())
+            src_wil_item = torch.zeros_like(src_item).float()
+            src_wil_item[src_start:src_start+tgt_key_item.shape[0]] = 1.
+            tgt_wil_item = torch.zeros_like(tgt_item).float()
+            tgt_wil_item[tgt_start:tgt_start+tgt_value_item.shape[0]] = 1.
         else:
             tgt_key_item = None
             tgt_value_item = None
@@ -359,6 +373,8 @@ class LanguagePairDataset(FairseqDataset):
         if tgt_key_item is not None and tgt_value_item is not None:
             example['target_key'] = tgt_key_item
             example['target_value'] = tgt_value_item
+            example['source_wil'] = src_wil_item
+            example['target_wil'] = tgt_wil_item
         return example
 
     def __len__(self):
