@@ -935,7 +935,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         logits = self.output_layer(x)
         model_prob = utils.softmax(logits, dim=-1) + 1e-8 # B x T x V
 
-        if attend_kv_table:
+        if True:
             last_tgt_v = self.embed_scale * self.embed_tokens(tgt_v_toks) * (~tgt_v_toks.eq(self.padding_idx)).unsqueeze(-1) # B x T(v) x C
             cos_sim = _cosine_similarity(x, last_tgt_v) # B x T x T(v), need to be regularized
             plug_in_sim = cos_sim.max(dim=-1, keepdim=True).values # B x T x 1
