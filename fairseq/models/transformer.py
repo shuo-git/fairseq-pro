@@ -809,6 +809,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             lang_indices = None
 
         if incremental_state is not None:
+            current_time_step = prev_output_tokens.shape[1]
             prev_output_tokens = prev_output_tokens[:, -1:]
             if positions is not None:
                 positions = positions[:, -1:]
@@ -949,7 +950,11 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             plug_in_v_idx = cos_sim.argmax(dim=-1) # B x T
             plug_in_v = tgt_v_toks.gather(index=plug_in_v_idx, dim=-1).unsqueeze(-1) # B x T x 1
             plug_in_prob = torch.zeros_like(model_prob).scatter(dim=-1, index=plug_in_v, src=plug_in_sim)
-            plug_in_gate = self.plug_ins[-1](x.transpose(0, 1), last_tgt_v.transpose(0, 1), tgt_v_padding_mask).transpose(0, 1)
+            plug_in_gate = self.plug_ins[-1](x.transpose(0, 1), last_tgt_v.transpose(0, 1), tgt_v_padding_mask).transpose(0, 1) # B x T x 1
+            if incremental_state is not None:
+                # Decoding Rule-3 by Shuo
+                # plug_in_gate *= 
+                pass
             model_prob += plug_in_prob * plug_in_gate
             model_prob = torch.min(torch.ones_like(model_prob), model_prob) # < 1
             # model_prob = torch.max(torch.ones_like(model_prob) * 1e-8, model_prob) # > 0
