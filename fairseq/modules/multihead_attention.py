@@ -375,13 +375,14 @@ class MultiheadAttention(nn.Module):
         attn_weights_float = utils.softmax(
             attn_weights, dim=-1, onnx_trace=self.onnx_trace
         )
-        if key_padding_mask is not None and torch.all(key_padding_mask, dim=-1).any():
-            attn_weights_float = attn_weights_float.view(bsz, self.num_heads, tgt_len, src_len)
-            attn_weights_float = attn_weights_float.masked_fill(
-                torch.all(key_padding_mask, dim=-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).to(torch.bool),
-                0.
-            )
-            attn_weights_float = attn_weights_float.view(bsz * self.num_heads, tgt_len, src_len)
+        if key_padding_mask is not None:
+            if torch.all(key_padding_mask, dim=-1).any():
+                attn_weights_float = attn_weights_float.view(bsz, self.num_heads, tgt_len, src_len)
+                attn_weights_float = attn_weights_float.masked_fill(
+                    torch.all(key_padding_mask, dim=-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).to(torch.bool),
+                    0.
+                )
+                attn_weights_float = attn_weights_float.view(bsz * self.num_heads, tgt_len, src_len)
 
         attn_weights = attn_weights_float.type_as(attn_weights)
         attn_probs = self.dropout_module(attn_weights)
