@@ -204,7 +204,7 @@ class Softmax_Plug_In_Gate(nn.Module):
         aggregated_v = self.c_layer_norm(aggregated_v)
         h_state = self.h_layer_norm(self.h_proj(h_state))
         cat_v_h = self.activation1(torch.cat([aggregated_v, h_state], dim=-1)) # T x B x (2V)
-        gate = self.sigmoid(self.vector(cat_v_h)) # T x B x 1
+        gate = self.activation2(self.vector(cat_v_h)) # T x B x 1
 
 
     def build_attention(self, embed_dim, heads, dropout):
