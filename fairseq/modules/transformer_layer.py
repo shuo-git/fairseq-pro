@@ -190,7 +190,7 @@ class Softmax_Plug_In_Gate(nn.Module):
         self.activation1 = utils.get_activation_fn('tanh')
         self.vector = nn.Linear(2 * my_dim, 1, bias=bias)
         nn.init.xavier_uniform_(self.vector.weight, gain=1 / math.sqrt(2))
-        self.activation2 = nn.Sigmoid
+        self.activation2 = nn.Sigmoid()
 
     def forward(self, h_state, tgt_v, key_padding_mask):
         # tgt_v: T x B x V
