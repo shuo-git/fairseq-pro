@@ -34,6 +34,7 @@ from .transpose_last import TransposeLast
 from .unfold import unfold1d
 from .transformer_layer import TransformerDecoderLayer, TransformerEncoderLayer
 from .transformer_layer import Target_Plug_In_Layer_Type1, Target_Plug_In_Layer_Type2
+from .transformer_layer import Softmax_Plug_In_Gate
 from .vggblock import VGGBlock
 
 __all__ = [
@@ -72,6 +73,7 @@ __all__ = [
     'TransformerEncoderLayer',
     'Target_Plug_In_Layer_Type1',
     'Target_Plug_In_Layer_Type2',
+    'Softmax_Plug_In_Gate',
     'TransposeLast',
     'VGGBlock',
     'unfold1d',

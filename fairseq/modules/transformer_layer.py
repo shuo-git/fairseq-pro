@@ -177,6 +177,46 @@ class Target_Plug_In_Layer_Type2(nn.Module):
         return k, v
 
 
+class Softmax_Plug_In_Gate(nn.Module):
+    def __init__(self, my_dim, head_num, bias=True, dropout=0.0):
+        super().__init__()
+        self.attention = build_attention(my_dim, head_num,
+                dropout=dropout,
+            )
+        self.c_layer_norm = LayerNorm(my_dim)
+        self.h_proj = nn.Linear(my_dim, my_dim, bias=bias)
+        nn.init.xavier_uniform_(self.h_proj.weight, gain=1 / math.sqrt(2))
+        self.h_layer_norm = LayerNorm(my_dim)
+        self.activation1 = utils.get_activation_fn('tanh')
+        self.vector = nn.Linear(2 * my_dim, 1, bias=bias)
+        nn.init.xavier_uniform_(self.vector.weight, gain=1 / math.sqrt(2))
+        self.activation2 = nn.sigmoid
+
+    def forward(self, h_state, tgt_v, key_padding_mask):
+        # tgt_v: T x B x V
+        # h_state: T x B x V
+        aggregated_v, _ = self.attention(
+                query=h_state,
+                key=tgt_v,
+                value=tgt_v,
+                key_padding_mask=key_padding_mask
+            )
+        aggregated_v = self.c_layer_norm(aggregated_v)
+        h_state = self.h_layer_norm(self.h_proj(h_state))
+        cat_v_h = self.activation1(torch.cat([aggregated_v, h_state], dim=-1)) # T x B x (2V)
+        gate = self.sigmoid(self.vector(cat_v_h)) # T x B x 1
+
+
+    def build_attention(self, embed_dim, heads, dropout):
+        return MultiheadAttention(
+            embed_dim,
+            heads,
+            dropout=dropout,
+            encoder_decoder_attention=True,
+        )
+
+
+
 class TransformerDecoderLayer(nn.Module):
     """Decoder layer block.
 

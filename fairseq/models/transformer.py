@@ -28,6 +28,7 @@ from fairseq.modules import (
     TransformerEncoderLayer,
     Target_Plug_In_Layer_Type1,
     Target_Plug_In_Layer_Type2,
+    Softmax_Plug_In_Gate,
 )
 from fairseq.modules.quant_noise import quant_noise as apply_quant_noise_
 from torch import Tensor
@@ -620,9 +621,10 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             self.plug_ins.extend(
                 [
                     self.build_plug_in_layer(embed_dim, args.decoder_attention_heads)
-                    for _ in range(args.decoder_layers + 1)
+                    for _ in range(args.decoder_layers)
                 ]
             )
+            self.plug_ins.append(self.build_softmax_plug_in(embed_dim, args.decoder_attention_heads, args.attention_dropout))
         else:
             self.plug_ins = None
 
@@ -687,6 +689,9 @@ class TransformerDecoder(FairseqIncrementalDecoder):
 
     def build_plug_in_layer(self, my_dim, head_num):
         return Target_Plug_In_Layer_Type2(my_dim, head_num)
+
+    def build_softmax_plug_in(self, my_dim, head_num, dropout):
+        return Softmax_Plug_In_Gate(my_dim, head_num, dropout)
 
     def build_decoder_layer(self, args, no_encoder_attn=False):
         return TransformerDecoderLayer(args, no_encoder_attn)
@@ -935,15 +940,17 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         logits = self.output_layer(x)
         model_prob = utils.softmax(logits, dim=-1) + 1e-8 # B x T x V
 
-        if True:
-            last_tgt_v = self.embed_scale * self.embed_tokens(tgt_v_toks) * (~tgt_v_toks.eq(self.padding_idx)).unsqueeze(-1) # B x T(v) x C
+        if attend_kv_table:
+            tgt_v_padding_mask = tgt_v_toks.eq(self.padding_idx)
+            last_tgt_v = self.embed_scale * self.embed_tokens(tgt_v_toks) * (~tgt_v_padding_mask).unsqueeze(-1) # B x T(v) x C
             cos_sim = _cosine_similarity(x, last_tgt_v) # B x T x T(v), need to be regularized
             plug_in_sim = cos_sim.max(dim=-1, keepdim=True).values # B x T x 1
             plug_in_sim = torch.max(torch.ones_like(plug_in_sim) * 1e-8, plug_in_sim) # no negative plug-in-sim
             plug_in_v_idx = cos_sim.argmax(dim=-1) # B x T
             plug_in_v = tgt_v_toks.gather(index=plug_in_v_idx, dim=-1).unsqueeze(-1) # B x T x 1
             plug_in_prob = torch.zeros_like(model_prob).scatter(dim=-1, index=plug_in_v, src=plug_in_sim)
-            model_prob += plug_in_prob
+            plug_in_gate = self.plug_ins[-1](x, last_tgt_v, tgt_v_padding_mask)
+            model_prob += plug_in_prob * plug_in_gate
             model_prob = torch.min(torch.ones_like(model_prob), model_prob) # < 1
             # model_prob = torch.max(torch.ones_like(model_prob) * 1e-8, model_prob) # > 0
             if incremental_state is not None:
