@@ -376,6 +376,7 @@ class MultiheadAttention(nn.Module):
             attn_weights, dim=-1, onnx_trace=self.onnx_trace
         )
         if key_padding_mask is not None:
+            key_padding_mask = key_padding_mask.to(bool)
             if torch.all(key_padding_mask, dim=-1).any():
                 attn_weights_float = attn_weights_float.view(bsz, self.num_heads, tgt_len, src_len)
                 attn_weights_float = attn_weights_float.masked_fill(
