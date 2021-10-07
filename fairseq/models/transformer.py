@@ -621,7 +621,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             self.plug_ins.extend(
                 [
                     self.build_plug_in_layer(embed_dim, args.decoder_attention_heads)
-                    for _ in range(args.decoder_layers + 1)
+                    for _ in range(args.decoder_layers)
                 ]
             )
             self.plug_ins.append(self.build_softmax_plug_in(embed_dim, args.decoder_attention_heads, args.attention_dropout))

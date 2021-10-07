@@ -388,7 +388,7 @@ def load_model_ensemble(filenames, arg_overrides=None, task=None, strict=True, s
     return ensemble, args
 
 
-def load_model_ensemble_and_task(filenames, arg_overrides=None, task=None, strict=True, suffix=''):
+def load_model_ensemble_and_task(filenames, arg_overrides=None, task=None, strict=False, suffix=''):
     from fairseq import tasks
 
     ensemble = []
