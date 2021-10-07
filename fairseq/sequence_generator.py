@@ -320,6 +320,8 @@ class SequenceGenerator(nn.Module):
             lprobs[:, self.unk] -= self.unk_penalty  # apply unk penalty
 
             # handle max length constraint
+            if step == max_len - 1:
+                print("wocao")
             if step >= max_len:
                 lprobs[:, : self.eos] = -math.inf
                 lprobs[:, self.eos] = 0.
