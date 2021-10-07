@@ -180,7 +180,7 @@ class Target_Plug_In_Layer_Type2(nn.Module):
 class Softmax_Plug_In_Gate(nn.Module):
     def __init__(self, my_dim, head_num, bias=True, dropout=0.0):
         super().__init__()
-        self.attention = build_attention(my_dim, head_num,
+        self.attention = self.build_attention(my_dim, head_num,
                 dropout=dropout,
             )
         self.c_layer_norm = LayerNorm(my_dim)
