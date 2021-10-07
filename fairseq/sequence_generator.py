@@ -324,7 +324,6 @@ class SequenceGenerator(nn.Module):
                 print("wocao")
             if step >= max_len:
                 lprobs[:, : self.eos] = -math.inf
-                lprobs[:, self.eos] = 0.
                 lprobs[:, self.eos + 1 :] = -math.inf
 
             # handle prefix tokens (possibly with different lengths)
