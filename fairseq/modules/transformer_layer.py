@@ -88,7 +88,15 @@ class TransformerEncoderLayer(nn.Module):
                     state_dict["{}.{}.{}".format(name, new, m)] = state_dict[k]
                     del state_dict[k]
 
-    def forward(self, x, encoder_padding_mask, attn_mask: Optional[Tensor] = None):
+    def forward(
+        self, 
+        x, 
+        encoder_padding_mask,
+        attn_mask: Optional[Tensor] = None,
+        past_key: Optional[Tensor] = None,
+        past_value: Optional[Tensor] = None,
+        past_key_padding_mask: Optional[torch.Tensor] = None,
+    ):
         """
         Args:
             x (Tensor): input to the layer of shape `(seq_len, batch, embed_dim)`
@@ -121,6 +129,9 @@ class TransformerEncoderLayer(nn.Module):
             value=x,
             key_padding_mask=encoder_padding_mask,
             attn_mask=attn_mask,
+            past_key=past_key,
+            past_value=past_value,
+            past_key_padding_mask=past_key_padding_mask,
         )
         x = self.dropout_module(x)
         x = residual + x
@@ -142,8 +153,9 @@ class TransformerEncoderLayer(nn.Module):
 
 
 class Target_Plug_In_Layer_Type1(nn.Module):
-    def __init__(self, my_dim, head_num, bias=True):
+    def __init__(self, args, my_dim, head_num, bias=True):
         super().__init__()
+        self.dropout_module = FairseqDropout(args.kv_projection_dropout, module_name=self.__class__.__name__)
         self.k_proj = nn.Linear(my_dim, my_dim, bias=bias)
         self.v_proj = nn.Linear(my_dim, my_dim, bias=bias)
         nn.init.xavier_uniform_(self.k_proj.weight, gain=1 / math.sqrt(2))
@@ -152,12 +164,15 @@ class Target_Plug_In_Layer_Type1(nn.Module):
         self.v_layer_norm = LayerNorm(my_dim)
 
     def forward(self, k, v):
-        return self.k_layer_norm(self.k_proj(k)), self.v_layer_norm(self.v_proj(v))
+        k = self.k_layer_norm(self.dropout_module(self.k_proj(k)))
+        v = self.v_layer_norm(self.dropout_module(self.v_proj(v)))
+        return k, v
 
 
 class Target_Plug_In_Layer_Type2(nn.Module):
-    def __init__(self, my_dim, head_num, bias=True):
+    def __init__(self, args, my_dim, head_num, bias=True):
         super().__init__()
+        self.dropout_module = FairseqDropout(args.kv_projection_dropout, module_name=self.__class__.__name__)
         self.k_fc1 = nn.Linear(my_dim, my_dim * 4, bias=bias)
         self.k_fc2 = nn.Linear(my_dim * 4, my_dim, bias=bias)
         self.v_fc1 = nn.Linear(my_dim, my_dim * 4, bias=bias)
@@ -172,16 +187,16 @@ class Target_Plug_In_Layer_Type2(nn.Module):
         self.v_layer_norm = LayerNorm(my_dim)
 
     def forward(self, k, v):
-        k = self.k_layer_norm(self.k_fc2(self.k_activation_fn(self.k_fc1(k))))
-        v = self.v_layer_norm(self.v_fc2(self.v_activation_fn(self.v_fc1(v))))
+        k = self.k_layer_norm(self.dropout_module(self.k_fc2(self.dropout_module(self.k_activation_fn(self.k_fc1(k))))))
+        v = self.v_layer_norm(self.dropout_module(self.v_fc2(self.dropout_module(self.v_activation_fn(self.v_fc1(v))))))
         return k, v
 
 
 class Softmax_Plug_In_Gate(nn.Module):
-    def __init__(self, my_dim, head_num, dropout=0.0, bias=True):
+    def __init__(self, args, my_dim, head_num, bias=True):
         super().__init__()
         self.attention = self.build_attention(my_dim, head_num,
-                dropout=dropout,
+                dropout=args.kv_attention_dropout,
             )
         self.c_layer_norm = LayerNorm(my_dim)
         self.h_proj = nn.Linear(my_dim, my_dim, bias=bias)
@@ -193,7 +208,7 @@ class Softmax_Plug_In_Gate(nn.Module):
         self.activation2 = nn.Sigmoid()
 
     def forward(self, h_state, tgt_v, key_padding_mask):
-        # tgt_v: T x B x V
+        # tgt_v: T(v) x B x V
         # h_state: T x B x V
         aggregated_v, _ = self.attention(
                 query=h_state,

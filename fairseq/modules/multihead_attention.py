@@ -183,6 +183,11 @@ class MultiheadAttention(nn.Module):
         #         v_proj_weight=self.v_proj.weight,
         #     )
 
+        if past_key is not None and past_value is not None and past_key_padding_mask is not None:
+            attend_kv_table = True
+        else:
+            attend_kv_table = False
+
         if incremental_state is not None:
             saved_state = self._get_input_buffer(incremental_state)
             if saved_state is not None and "prev_key" in saved_state:
@@ -214,6 +219,10 @@ class MultiheadAttention(nn.Module):
             k = self.k_proj(key)
             v = self.v_proj(value)
         q *= self.scaling
+
+        if attend_kv_table:
+            past_key = self.k_proj(past_key)
+            past_value = self.v_proj(past_value)
 
         # if self.bias_k is not None:
         #     assert self.bias_v is not None
@@ -302,7 +311,7 @@ class MultiheadAttention(nn.Module):
             incremental_state = self._set_input_buffer(incremental_state, saved_state)
 
         # prepend past_key & past_value by Shuo
-        if past_key is not None and past_value is not None:
+        if attend_kv_table:
             k = torch.cat([past_key, k], dim=1)
             v = torch.cat([past_value, v], dim=1)
             if attn_mask is not None:

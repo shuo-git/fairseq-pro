@@ -40,6 +40,17 @@ def collate(
             pad_to_length=pad_to_length,
         )
 
+    def merge_kv(key, left_pad, move_eos_to_beginning=False, pad_to_length=None):
+        shape = (len(samples), 3, -1)
+        temp_list = []
+        for s in samples:
+            temp_list += s[key]
+        return data_utils.collate_tokens(
+            temp_list,
+            pad_idx, eos_idx, left_pad, move_eos_to_beginning,
+            pad_to_length=pad_to_length,
+        ).view(shape) # shape: B x 3 x T(k|v)
+
     def check_alignment(alignment, src_len, tgt_len):
         if alignment is None or len(alignment) == 0:
             return False
@@ -102,8 +113,9 @@ def collate(
 
         if samples[0].get('target_key', None) is not None and \
            samples[0].get('target_value', None) is not None:
-            target_key = merge('target_key', left_pad=left_pad_target)
-            target_value = merge('target_value', left_pad=left_pad_target)
+
+            target_key = merge_kv('target_key', left_pad=left_pad_target)
+            target_value = merge_kv('target_value', left_pad=left_pad_target)
 
         if samples[0].get('prev_output_tokens', None) is not None:
             prev_output_tokens = merge('prev_output_tokens', left_pad=left_pad_target)
@@ -328,17 +340,21 @@ class LanguagePairDataset(FairseqDataset):
         #         src_item = self.src[index][:-1]
 
         if self.target_key_sep > -1:
-            sep_idx1 = sep_idx2 = -1
+            sep_idx_list = []
             for my_idx, my_item in enumerate(tgt_item.tolist()):
                 if my_item == self.target_key_sep:
-                    if sep_idx1 < 0:
-                        sep_idx1 = my_idx
-                    else:
-                        sep_idx2 = my_idx
-                        break
-            tgt_key_item = tgt_item[:sep_idx1]
-            tgt_value_item = tgt_item[sep_idx1+1:sep_idx2]
-            tgt_item = tgt_item[sep_idx2+1:]
+                    sep_idx_list.append(my_idx)
+            assert len(sep_idx_list) == 6
+
+            k_start_list = [0, sep_idx_list[1]+1, sep_idx_list[3]+1]
+            k_end_list = [sep_idx_list[0], sep_idx_list[2], sep_idx_list[4]]
+            v_start_list = [tidx + 1 for tidx in k_end_list]
+            v_end_list = [sep_idx_list[1], sep_idx_list[3], sep_idx_list[5]]
+
+            tgt_k_item_list = [tgt_item[s:t] for s, t in zip(k_start_list, k_end_list)]
+            tgt_v_item_list = [tgt_item[s:t] for s, t in zip(v_start_list, v_end_list)]
+
+            tgt_item = tgt_item[sep_idx_list[-1]+1:]
 
             def _getsubidx(_x, _y):
                 _l1, _l2 = len(_x), len(_y)
@@ -347,15 +363,13 @@ class LanguagePairDataset(FairseqDataset):
                         return _i
                 return -1
 
-            src_start = _getsubidx(src_item.tolist(), tgt_key_item.tolist())
-            tgt_start = _getsubidx(tgt_item.tolist(), tgt_value_item.tolist())
-            src_wil_item = torch.zeros_like(src_item)
-            src_wil_item[src_start:src_start+tgt_key_item.shape[0]] = 1
             tgt_wil_item = torch.zeros_like(tgt_item)
-            tgt_wil_item[tgt_start:tgt_start+tgt_value_item.shape[0]] = 1
+            for tgt_value_item in tgt_v_item_list:
+                tgt_start = _getsubidx(tgt_item.tolist(), tgt_value_item.tolist())
+                tgt_wil_item[tgt_start:tgt_start+tgt_value_item.shape[0]] = 1
         else:
-            tgt_key_item = None
-            tgt_value_item = None
+            tgt_k_item_list = None
+            tgt_v_item_list = None
 
         example = {
             'id': index,
@@ -370,10 +384,9 @@ class LanguagePairDataset(FairseqDataset):
             example['target_wil'] = self.target_wil_dataset[index]
         if self.source_wil_dataset is not None:
             example['source_wil'] = self.source_wil_dataset[index]
-        if tgt_key_item is not None and tgt_value_item is not None:
-            example['target_key'] = tgt_key_item
-            example['target_value'] = tgt_value_item
-            example['source_wil'] = src_wil_item
+        if tgt_k_item_list is not None and tgt_v_item_list is not None:
+            example['target_key'] = tgt_k_item_list
+            example['target_value'] = tgt_v_item_list
             example['target_wil'] = tgt_wil_item
         return example
 

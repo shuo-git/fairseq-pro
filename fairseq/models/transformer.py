@@ -30,6 +30,7 @@ from fairseq.modules import (
     Target_Plug_In_Layer_Type2,
     Softmax_Plug_In_Gate,
 )
+from fairseq.modules import LayerNorm, MultiheadAttention
 from fairseq.modules.quant_noise import quant_noise as apply_quant_noise_
 from torch import Tensor
 import torch.nn.functional as F
@@ -107,6 +108,10 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='dropout probability for attention weights')
         parser.add_argument('--activation-dropout', '--relu-dropout', type=float, metavar='D',
                             help='dropout probability after activation in FFN.')
+        parser.add_argument('--kv-attention-dropout', type=float, metavar='D', default=0.0
+                            help='dropout probability for kv attention weights')
+        parser.add_argument('--kv-projection-dropout', type=float, metavar='D', default=0.0
+                            help='dropout probability for kv projections')
         parser.add_argument('--encoder-embed-path', type=str, metavar='STR',
                             help='path to pre-trained encoder embedding')
         parser.add_argument('--encoder-embed-dim', type=int, metavar='N',
@@ -180,7 +185,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         parser.add_argument('--word-dropout-prob', type=float, metavar='D', default=0,
                             help='word dropout probability')
         parser.add_argument('--target-kv-table', action='store_true', default=False)
-        parser.add_argument('--encoder-out-key', action='store_true', default=False)
+        parser.add_argument('--encoder-out-key', action='store_true', default=False)å
         # fmt: on
 
     @classmethod
@@ -228,9 +233,27 @@ class TransformerModel(FairseqEncoderDecoderModel):
                 args, tgt_dict, args.decoder_embed_dim, args.decoder_embed_path
             )
 
-        encoder = cls.build_encoder(args, src_dict, encoder_embed_tokens)
-        decoder = cls.build_decoder(args, tgt_dict, decoder_embed_tokens)
+        if args.target_kv_table:
+            kv_aggregator = cls.build_kv_aggregator(
+                args, args.encoder_embed_dim
+            )
+        else:
+            kv_aggregator = None
+
+        encoder = cls.build_encoder(args, src_dict, encoder_embed_tokens, kv_aggregator)
+        decoder = cls.build_decoder(args, tgt_dict, decoder_embed_tokens, kv_aggregator)
         return cls(args, encoder, decoder)
+
+    @classmethod
+    def build_kv_aggregator(cls, args, embed_dim):
+        return MultiheadAttention(
+            embed_dim,
+            args.decoder_attention_heads,
+            kdim=getattr(args, "encoder_embed_dim", None),
+            vdim=getattr(args, "encoder_embed_dim", None),
+            dropout=args.kv_attention_dropout,
+            encoder_decoder_attention=True,
+        )
 
     @classmethod
     def build_embedding(cls, args, dictionary, embed_dim, path=None):
@@ -245,15 +268,16 @@ class TransformerModel(FairseqEncoderDecoderModel):
         return emb
 
     @classmethod
-    def build_encoder(cls, args, src_dict, embed_tokens):
-        return TransformerEncoder(args, src_dict, embed_tokens)
+    def build_encoder(cls, args, src_dict, embed_tokens, kv_aggregator):
+        return TransformerEncoder(args, src_dict, embed_tokens, kv_aggregator)
 
     @classmethod
-    def build_decoder(cls, args, tgt_dict, embed_tokens):
+    def build_decoder(cls, args, tgt_dict, embed_tokens, kv_aggregator):
         return TransformerDecoder(
             args,
             tgt_dict,
             embed_tokens,
+            kv_aggregator,
             no_encoder_attn=getattr(args, "no_cross_attention", False),
         )
 
@@ -316,7 +340,7 @@ class TransformerEncoder(FairseqEncoder):
         embed_tokens (torch.nn.Embedding): input embedding
     """
 
-    def __init__(self, args, dictionary, embed_tokens):
+    def __init__(self, args, dictionary, embed_tokens, kv_aggregator):
         super().__init__(dictionary)
         self.register_buffer("version", torch.Tensor([3]))
 
@@ -345,6 +369,19 @@ class TransformerEncoder(FairseqEncoder):
             else None
         )
 
+        self.kv_aggregator = kv_aggregator
+        # Build the Plug-In network
+        if self.args.target_kv_table:
+            self.plug_ins = nn.ModuleList([])
+            self.plug_ins.extend(
+                [
+                    self.build_plug_in_layer(args, embed_dim, args.encoder_attention_heads)
+                    for _ in range(args.encoder_layers)
+                ]
+            )
+        else:
+            self.plug_ins = None
+
         if getattr(args, "layernorm_embedding", False):
             self.layernorm_embedding = LayerNorm(embed_dim)
         else:
@@ -372,6 +409,9 @@ class TransformerEncoder(FairseqEncoder):
             self.layer_norm = LayerNorm(embed_dim)
         else:
             self.layer_norm = None
+
+    def build_plug_in_layer(self, args, my_dim, head_num):
+        return Target_Plug_In_Layer_Type2(args, my_dim, head_num)
 
     def build_prefix(self, args, num_embed, embed_dim):
         prefix_emb = nn.Embedding(num_embed + 1, embed_dim, padding_idx=0)
@@ -432,6 +472,32 @@ class TransformerEncoder(FairseqEncoder):
         """
         x, encoder_embedding = self.forward_embedding(src_tokens)
 
+        target_key = kwargs.get('target_key', None)
+        target_value = kwargs.get('target_value', None)
+        bsz = x.shape[0]
+        embed_dim = x.shape[-1]
+        if self.args.target_kv_table and target_key is not None and target_value is not None:
+            target_key = target_key.view(bsz * 3, -1)
+            target_value = target_value.view(bsz * 3, -1)
+            tgt_k, _ = self.forward_embedding(target_key).transpose(0, 1) # T(k) x 3B x C
+            tgt_v, _ = self.forward_embedding(target_value).transpose(0, 1) # T(v) x 3B x C
+            tgt_v_padding_mask = target_value.eq(self.padding_idx) # 3B x T(v)
+            tgt_v, _ = self.kv_aggregator(
+                query=tgt_k,
+                key=tgt_v,
+                value=tgt_v,
+                key_padding_mask=tgt_v_padding_mask
+            ) # T(k) x 3B x V
+            tgt_k = tgt_k.transpose(0, 1).view(bsz, -1, embed_dim).transpose(0, 1) # 3T(k) x B x C
+            tgt_v = tgt_v.transpose(0, 1).view(bsz, -1, embed_dim).transpose(0, 1) # 3T(k) x B x C
+            tgt_k_padding_mask = target_key.view(bsz, -1).eq(self.padding_idx) # B x 3T(k)
+            attend_kv_table = True
+        else:
+            tgt_k = None
+            tgt_v = None
+            tgt_k_padding_mask = None
+            attend_kv_table = False
+
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
 
@@ -441,8 +507,18 @@ class TransformerEncoder(FairseqEncoder):
         encoder_states = [] if return_all_hiddens else None
 
         # encoder layers
-        for layer in self.layers:
-            x = layer(x, encoder_padding_mask)
+        for idx, layer in enumerate(self.layers):
+            if attend_kv_table:
+                temp_tgt_k, temp_tgt_v = self.plug_ins[idx](tgt_k, tgt_v)
+            else:
+                temp_tgt_k = temp_tgt_v = None
+            x = layer(
+                    x,
+                    encoder_padding_mask,
+                    past_key=temp_tgt_k,
+                    past_value=temp_tgt_v,
+                    past_key_padding_mask=tgt_k_padding_mask,
+                )
             if return_all_hiddens:
                 assert encoder_states is not None
                 encoder_states.append(x)
@@ -457,6 +533,9 @@ class TransformerEncoder(FairseqEncoder):
             encoder_states=encoder_states,  # List[T x B x C]
             src_tokens=None,
             src_lengths=None,
+            tgt_k=tgt_k,  # 3T(k) x B x C
+            tgt_v=tgt_v,  # 3T(k) x B x C
+            tgt_k_padding_mask=tgt_k_padding_mask,  # B x 3T(k)
         )
 
     @torch.jit.export
@@ -507,6 +586,16 @@ class TransformerEncoder(FairseqEncoder):
             for idx, state in enumerate(encoder_states):
                 encoder_states[idx] = state.index_select(1, new_order)
 
+        tgt_k = encoder_out.tgt_k
+        if tgt_k is not None:
+            tgt_k = tgt_k.index_select(1, new_order)
+        tgt_v = encoder_out.tgt_v
+        if tgt_v is not None:
+            tgt_v = tgt_v.index_select(1, new_order)
+        tgt_k_padding_mask = encoder_out.tgt_k_padding_mask
+        if tgt_k_padding_mask is not None:
+            tgt_k_padding_mask = tgt_k_padding_mask.index_select(0, new_order)
+
         return EncoderOut(
             encoder_out=new_encoder_out,  # T x B x C
             encoder_padding_mask=new_encoder_padding_mask,  # B x T
@@ -514,6 +603,9 @@ class TransformerEncoder(FairseqEncoder):
             encoder_states=encoder_states,  # List[T x B x C]
             src_tokens=src_tokens,  # B x T
             src_lengths=src_lengths,  # B x 1
+            tgt_k=tgt_k,  # 3T(k) x B x C
+            tgt_v=tgt_v,  # 3T(k) x B x C
+            tgt_k_padding_mask=tgt_k_padding_mask,  # B x 3T(k)
         )
 
     def max_positions(self):
@@ -560,7 +652,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             (default: False).
     """
 
-    def __init__(self, args, dictionary, embed_tokens, no_encoder_attn=False):
+    def __init__(self, args, dictionary, embed_tokens, kv_aggregator, no_encoder_attn=False):
         self.args = args
         super().__init__(dictionary)
         self.register_buffer("version", torch.Tensor([3]))
@@ -620,11 +712,11 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             self.plug_ins = nn.ModuleList([])
             self.plug_ins.extend(
                 [
-                    self.build_plug_in_layer(embed_dim, args.decoder_attention_heads)
+                    self.build_plug_in_layer(args, embed_dim, args.decoder_attention_heads)
                     for _ in range(args.decoder_layers)
                 ]
             )
-            self.plug_ins.append(self.build_softmax_plug_in(embed_dim, args.decoder_attention_heads, args.attention_dropout))
+            self.plug_ins.append(self.build_softmax_plug_in(args, embed_dim, args.decoder_attention_heads))
         else:
             self.plug_ins = None
 
@@ -687,11 +779,11 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                 self.output_projection.weight, mean=0, std=self.output_embed_dim ** -0.5
             )
 
-    def build_plug_in_layer(self, my_dim, head_num):
-        return Target_Plug_In_Layer_Type2(my_dim, head_num)
+    def build_plug_in_layer(self, args, my_dim, head_num):
+        return Target_Plug_In_Layer_Type2(args, my_dim, head_num)
 
-    def build_softmax_plug_in(self, my_dim, head_num, dropout):
-        return Softmax_Plug_In_Gate(my_dim, head_num, dropout)
+    def build_softmax_plug_in(self, args, my_dim, head_num):
+        return Softmax_Plug_In_Gate(args, my_dim, head_num)
 
     def build_decoder_layer(self, args, no_encoder_attn=False):
         return TransformerDecoderLayer(args, no_encoder_attn)
@@ -816,38 +908,35 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             if lang_indices is not None:
                 lang_indices = lang_indices[:, -1:]
 
-        # embed tokens and positions
-        x = self.embed_scale * self.embed_tokens(prev_output_tokens)
-        tgt_k_toks = kwargs.get('target_key', None)
-        tgt_v_toks = kwargs.get('target_value', None)
-        orig_tgt_v_toks = kwargs.get('target_value', None)
-        if incremental_state is not None:
-            saved_state = self.get_incremental_state(incremental_state, "plug_in_state")
-            if saved_state is not None and tgt_v_toks is not None:
-                tgt_v_toks = saved_state['target_value']
-            elif tgt_v_toks is not None:
-                saved_state = {'target_value': tgt_v_toks}
-            else:
-                saved_state = None
-            # Decoding Rule-1 by Shuo
-            if tgt_v_toks is not None and saved_state is not None:
-                selected_tok = prev_output_tokens # B x 1
-                selected_mask = tgt_v_toks.eq(selected_tok)
-                tgt_v_toks = tgt_v_toks * (~selected_mask) + self.padding_idx * selected_mask # B x T(v)
-                saved_state['target_value'] = tgt_v_toks
-                self.set_incremental_state(incremental_state, 'plug_in_state', saved_state)
-        if self.args.target_kv_table and tgt_k_toks is not None and tgt_v_toks is not None:
-            if self.args.encoder_out_key and kwargs.get('src_wil', None) is not None:
-                encoder_out_h = encoder_out.encoder_out.transpose(0, 1)
-                tgt_k = encoder_out_h * kwargs.get('src_wil').unsqueeze(-1)
-            else:
-                tgt_k = self.embed_scale * self.embed_tokens(tgt_k_toks) * (~tgt_k_toks.eq(self.padding_idx)).unsqueeze(-1)
-            tgt_v = self.embed_scale * self.embed_tokens(orig_tgt_v_toks) * (~orig_tgt_v_toks.eq(self.padding_idx)).unsqueeze(-1)
-            tgt_k = torch.sum(tgt_k, dim=1, keepdim=True)
-            tgt_v = torch.sum(tgt_v, dim=1, keepdim=True)
+        if kwargs.get('target_key', None) is not None and kwargs.get('target_value', None) is not None and self.args.target_kv_table:
             attend_kv_table = True
         else:
             attend_kv_table = False
+
+        # embed tokens and positions
+        x = self.embed_scale * self.embed_tokens(prev_output_tokens)
+        if attend_kv_table:
+            tgt_k = encoder_out.tgt_k
+            tgt_v = encoder_out.tgt_v
+            tgt_k_padding_mask = encoder_out.tgt_k_padding_mask
+            tgt_k_toks = kwargs.get('target_key')
+            tgt_v_toks = kwargs.get('target_value')
+        else:
+            tgt_k = tgt_v = None
+            tgt_k_padding_mask = None
+            tgt_k_toks = tgt_v_toks = None
+        if attend_kv_table and incremental_state is not None:
+            saved_state = self.get_incremental_state(incremental_state, "plug_in_state")
+            if saved_state is not None:
+                tgt_v_toks = saved_state['target_value']
+            else:
+                saved_state = {'target_value': tgt_v_toks}
+            # Decoding Rule-1 by Shuo
+            selected_tok = prev_output_tokens # B x 1
+            selected_mask = tgt_v_toks.eq(selected_tok)
+            tgt_v_toks = tgt_v_toks * (~selected_mask) + self.padding_idx * selected_mask # B x T(v)
+            saved_state['target_value'] = tgt_v_toks
+            self.set_incremental_state(incremental_state, 'plug_in_state', saved_state)
 
         # if self.quant_noise is not None:
         #     x = self.quant_noise(x)
@@ -882,10 +971,6 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         self_attn_padding_mask: Optional[Tensor] = None
         if self.cross_self_attention or prev_output_tokens.eq(self.padding_idx).any():
             self_attn_padding_mask = prev_output_tokens.eq(self.padding_idx)
-        if attend_kv_table:
-            attend_kv_table_padding_mask = torch.all(tgt_k_toks.eq(self.padding_idx), dim=1, keepdim=True)
-        else:
-            attend_kv_table_padding_mask = None
 
         # decoder layers
         attn: Optional[Tensor] = None
@@ -912,7 +997,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                 need_head_weights=bool((idx == alignment_layer)),
                 past_key=temp_tgt_k,
                 past_value=temp_tgt_v,
-                past_key_padding_mask=attend_kv_table_padding_mask,
+                past_key_padding_mask=tgt_k_padding_mask,
             )
             inner_states.append(x)
             if layer_attn is not None and idx == alignment_layer:
@@ -934,39 +1019,39 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             tgt_k = tgt_k.transpose(0, 1)
             tgt_v = tgt_v.transpose(0, 1)
 
-        def _cosine_similarity(am, bm, eps=1e-8):
+        def _cosine_similarity(am, bm, eps):
             a_n, b_n = am.norm(dim=-1, keepdim=True), bm.norm(dim=-1, keepdim=True)
             a_norm = am / torch.max(a_n, eps * torch.ones_like(a_n))
             b_norm = bm / torch.max(b_n, eps * torch.ones_like(b_n))
             sim_mt = torch.bmm(a_norm, b_norm.transpose(1, 2))
             return sim_mt
 
+        epsilon = 1e-8
         logits = self.output_layer(x)
-        model_prob = utils.softmax(logits, dim=-1) + 1e-8 # B x T x V
+        model_prob = utils.softmax(logits, dim=-1) + epsilon # B x T x V
 
         if attend_kv_table:
             tgt_v_padding_mask = tgt_v_toks.eq(self.padding_idx)
             last_tgt_v = self.embed_scale * self.embed_tokens(tgt_v_toks) * (~tgt_v_padding_mask).unsqueeze(-1) # B x T(v) x C
-            cos_sim = _cosine_similarity(x, last_tgt_v) # B x T x T(v), need to be regularized
+            cos_sim = _cosine_similarity(x, last_tgt_v, epsilon) # B x T x T(v), need to be regularized
             plug_in_sim = cos_sim.max(dim=-1, keepdim=True).values # B x T x 1
-            plug_in_sim = torch.max(torch.ones_like(plug_in_sim) * 1e-8, plug_in_sim) # no negative plug-in-sim
+            plug_in_sim = torch.max(torch.ones_like(plug_in_sim) * epsilon, plug_in_sim) # no negative plug-in-sim
             plug_in_v_idx = cos_sim.argmax(dim=-1) # B x T
             plug_in_v = tgt_v_toks.gather(index=plug_in_v_idx, dim=-1).unsqueeze(-1) # B x T x 1
-            plug_in_prob = torch.zeros_like(model_prob).scatter(dim=-1, index=plug_in_v, src=plug_in_sim)
+            plug_in_prob = torch.zeros_like(model_prob).scatter(dim=-1, index=plug_in_v, src=plug_in_sim) # B x T x V
             plug_in_gate = self.plug_ins[-1](x.transpose(0, 1), last_tgt_v.transpose(0, 1), tgt_v_padding_mask).transpose(0, 1) # B x T x 1
-            # if incremental_state is not None:
+            if incremental_state is not None:
                 # Decoding Rule-3 by Shuo
-                # plug_in_gate *= 
-                # pass
+                plug_in_gate *= (1.0 * math.exp(1.0 * current_time_step))
             model_prob += plug_in_prob * plug_in_gate
             model_prob = torch.min(torch.ones_like(model_prob), model_prob) # < 1
-            # model_prob = torch.max(torch.ones_like(model_prob) * 1e-8, model_prob) # > 0
+            # model_prob = torch.max(torch.ones_like(model_prob) * epsilon, model_prob) # > 0
             if incremental_state is not None:
                 assert saved_state is not None
                 # Decoding Rule-2 by Shuo
                 may_end_mask = torch.all(tgt_v_toks.eq(self.padding_idx), dim=-1, keepdim=True) # B x 1
                 may_end_idx = (self.padding_idx * may_end_mask + self.dictionary.eos() * (~may_end_mask)).unsqueeze(-1).long() # B x 1 x 1
-                may_end_src = torch.zeros_like(may_end_idx).float() + 1e-8
+                may_end_src = torch.zeros_like(may_end_idx).float() + epsilon
                 model_prob = model_prob.scatter(dim=-1, index=may_end_idx, src=may_end_src)
 
         return logits, {"attn": [attn], "inner_states": inner_states, "model_prob": model_prob}
