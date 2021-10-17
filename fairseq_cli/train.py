@@ -71,6 +71,10 @@ def main(args):
             p.requires_grad = False
         for p in model.encoder.embed_prefix.parameters():
             p.requires_grad = True
+        for p in model.encoder.plug_ins.parameters():
+            p.requires_grad = True
+        for p in model.encoder.kv_aggregator.parameters():
+            p.requires_grad = True
         for p in model.decoder.plug_ins.parameters():
             p.requires_grad = True
     criterion = task.build_criterion(args)
