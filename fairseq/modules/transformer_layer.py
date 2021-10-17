@@ -417,9 +417,6 @@ class TransformerDecoderLayer(nn.Module):
             incremental_state=incremental_state,
             need_weights=False,
             attn_mask=self_attn_mask,
-            past_key=past_key,
-            past_value=past_value,
-            past_key_padding_mask=past_key_padding_mask,
         )
         x = self.dropout_module(x)
         x = residual + x

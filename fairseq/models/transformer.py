@@ -185,7 +185,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         parser.add_argument('--word-dropout-prob', type=float, metavar='D', default=0,
                             help='word dropout probability')
         parser.add_argument('--target-kv-table', action='store_true', default=False)
-        parser.add_argument('--encoder-out-key', action='store_true', default=False)å
+        parser.add_argument('--encoder-out-key', action='store_true', default=False)
         # fmt: on
 
     @classmethod
