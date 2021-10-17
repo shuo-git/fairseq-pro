@@ -479,8 +479,10 @@ class TransformerEncoder(FairseqEncoder):
         if self.args.target_kv_table and target_key is not None and target_value is not None:
             target_key = target_key.view(bsz * 3, -1)
             target_value = target_value.view(bsz * 3, -1)
-            tgt_k, _ = self.forward_embedding(target_key).transpose(0, 1) # T(k) x 3B x C
-            tgt_v, _ = self.forward_embedding(target_value).transpose(0, 1) # T(v) x 3B x C
+            tgt_k, _ = self.forward_embedding(target_key)
+            tgt_k = tgt_k.transpose(0, 1) # T(k) x 3B x C
+            tgt_v, _ = self.forward_embedding(target_value)
+            tgt_v = tgt_v.transpose(0, 1) # T(v) x 3B x C
             tgt_v_padding_mask = target_value.eq(self.padding_idx) # 3B x T(v)
             tgt_v, _ = self.kv_aggregator(
                 query=tgt_k,
