@@ -916,13 +916,14 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             attend_kv_table = False
 
         # embed tokens and positions
+        bsz = prev_output_tokens.shape(0)
         x = self.embed_scale * self.embed_tokens(prev_output_tokens)
         if attend_kv_table:
             tgt_k = encoder_out.tgt_k
             tgt_v = encoder_out.tgt_v
             tgt_k_padding_mask = encoder_out.tgt_k_padding_mask
-            tgt_k_toks = kwargs.get('target_key')
-            tgt_v_toks = kwargs.get('target_value')
+            tgt_k_toks = kwargs.get('target_key').view(bsz, -1)
+            tgt_v_toks = kwargs.get('target_value').view(bsz, -1)
         else:
             tgt_k = tgt_v = None
             tgt_k_padding_mask = None
