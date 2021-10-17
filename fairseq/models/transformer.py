@@ -491,7 +491,7 @@ class TransformerEncoder(FairseqEncoder):
                 key_padding_mask=tgt_v_padding_mask
             ) # T(k) x 3B x V
             tgt_k = tgt_k.transpose(0, 1).view(bsz, -1, embed_dim).transpose(0, 1) # 3T(k) x B x C
-            tgt_v = tgt_v.transpose(0, 1).view(bsz, -1, embed_dim).transpose(0, 1) # 3T(k) x B x C
+            tgt_v = tgt_v.contiguous().transpose(0, 1).view(bsz, -1, embed_dim).transpose(0, 1) # 3T(k) x B x C
             tgt_k_padding_mask = target_key.view(bsz, -1).eq(self.padding_idx) # B x 3T(k)
             attend_kv_table = True
         else:
