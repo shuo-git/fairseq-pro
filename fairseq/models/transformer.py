@@ -1043,9 +1043,9 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             plug_in_v = tgt_v_toks.gather(index=plug_in_v_idx, dim=-1).unsqueeze(-1) # B x T x 1
             plug_in_prob = torch.zeros_like(model_prob).scatter(dim=-1, index=plug_in_v, src=plug_in_sim) # B x T x V
             plug_in_gate = self.plug_ins[-1](x.transpose(0, 1), last_tgt_v.transpose(0, 1), tgt_v_padding_mask).transpose(0, 1) # B x T x 1
-            # if incremental_state is not None:
-            #     # Decoding Rule-3 by Shuo
-            #     plug_in_gate *= (1.0 * math.exp(1.0 * current_time_step))
+            if incremental_state is not None:
+                # Decoding Rule-3 by Shuo
+                plug_in_gate *= (1.0 * math.exp(1.0 * current_time_step))
             model_prob += plug_in_prob * plug_in_gate
             model_prob = torch.min(torch.ones_like(model_prob), model_prob) # < 1
             # model_prob = torch.max(torch.ones_like(model_prob) * epsilon, model_prob) # > 0
