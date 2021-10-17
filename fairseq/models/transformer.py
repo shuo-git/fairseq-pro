@@ -916,7 +916,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             attend_kv_table = False
 
         # embed tokens and positions
-        bsz = prev_output_tokens.shape(0)
+        bsz = prev_output_tokens.shape[0]
         x = self.embed_scale * self.embed_tokens(prev_output_tokens)
         if attend_kv_table:
             tgt_k = encoder_out.tgt_k
