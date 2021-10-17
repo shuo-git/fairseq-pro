@@ -1033,29 +1033,29 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         logits = self.output_layer(x)
         model_prob = utils.softmax(logits, dim=-1) + epsilon # B x T x V
 
-        # if attend_kv_table:
-        #     tgt_v_padding_mask = tgt_v_toks.eq(self.padding_idx)
-        #     last_tgt_v = self.embed_scale * self.embed_tokens(tgt_v_toks) * (~tgt_v_padding_mask).unsqueeze(-1) # B x T(v) x C
-        #     cos_sim = _cosine_similarity(x, last_tgt_v, epsilon) # B x T x T(v), need to be regularized
-        #     plug_in_sim = cos_sim.max(dim=-1, keepdim=True).values # B x T x 1
-        #     plug_in_sim = torch.max(torch.ones_like(plug_in_sim) * epsilon, plug_in_sim) # no negative plug-in-sim
-        #     plug_in_v_idx = cos_sim.argmax(dim=-1) # B x T
-        #     plug_in_v = tgt_v_toks.gather(index=plug_in_v_idx, dim=-1).unsqueeze(-1) # B x T x 1
-        #     plug_in_prob = torch.zeros_like(model_prob).scatter(dim=-1, index=plug_in_v, src=plug_in_sim) # B x T x V
-        #     plug_in_gate = self.plug_ins[-1](x.transpose(0, 1), last_tgt_v.transpose(0, 1), tgt_v_padding_mask).transpose(0, 1) # B x T x 1
-        #     if incremental_state is not None:
-        #         # Decoding Rule-3 by Shuo
-        #         plug_in_gate *= (1.0 * math.exp(1.0 * current_time_step))
-        #     model_prob += plug_in_prob * plug_in_gate
-        #     model_prob = torch.min(torch.ones_like(model_prob), model_prob) # < 1
-        #     # model_prob = torch.max(torch.ones_like(model_prob) * epsilon, model_prob) # > 0
-        #     if incremental_state is not None:
-        #         assert saved_state is not None
-        #         # Decoding Rule-2 by Shuo
-        #         may_end_mask = torch.all(tgt_v_toks.eq(self.padding_idx), dim=-1, keepdim=True) # B x 1
-        #         may_end_idx = (self.padding_idx * may_end_mask + self.dictionary.eos() * (~may_end_mask)).unsqueeze(-1).long() # B x 1 x 1
-        #         may_end_src = torch.zeros_like(may_end_idx).float() + epsilon
-        #         model_prob = model_prob.scatter(dim=-1, index=may_end_idx, src=may_end_src)
+        if attend_kv_table:
+            tgt_v_padding_mask = tgt_v_toks.eq(self.padding_idx)
+            last_tgt_v = self.embed_scale * self.embed_tokens(tgt_v_toks) * (~tgt_v_padding_mask).unsqueeze(-1) # B x T(v) x C
+            cos_sim = _cosine_similarity(x, last_tgt_v, epsilon) # B x T x T(v), need to be regularized
+            plug_in_sim = cos_sim.max(dim=-1, keepdim=True).values # B x T x 1
+            plug_in_sim = torch.max(torch.ones_like(plug_in_sim) * epsilon, plug_in_sim) # no negative plug-in-sim
+            plug_in_v_idx = cos_sim.argmax(dim=-1) # B x T
+            plug_in_v = tgt_v_toks.gather(index=plug_in_v_idx, dim=-1).unsqueeze(-1) # B x T x 1
+            plug_in_prob = torch.zeros_like(model_prob).scatter(dim=-1, index=plug_in_v, src=plug_in_sim) # B x T x V
+            plug_in_gate = self.plug_ins[-1](x.transpose(0, 1), last_tgt_v.transpose(0, 1), tgt_v_padding_mask).transpose(0, 1) # B x T x 1
+            # if incremental_state is not None:
+            #     # Decoding Rule-3 by Shuo
+            #     plug_in_gate *= (1.0 * math.exp(1.0 * current_time_step))
+            model_prob += plug_in_prob * plug_in_gate
+            model_prob = torch.min(torch.ones_like(model_prob), model_prob) # < 1
+            # model_prob = torch.max(torch.ones_like(model_prob) * epsilon, model_prob) # > 0
+            # if incremental_state is not None:
+            #     assert saved_state is not None
+            #     # Decoding Rule-2 by Shuo
+            #     may_end_mask = torch.all(tgt_v_toks.eq(self.padding_idx), dim=-1, keepdim=True) # B x 1
+            #     may_end_idx = (self.padding_idx * may_end_mask + self.dictionary.eos() * (~may_end_mask)).unsqueeze(-1).long() # B x 1 x 1
+            #     may_end_src = torch.zeros_like(may_end_idx).float() + epsilon
+            #     model_prob = model_prob.scatter(dim=-1, index=may_end_idx, src=may_end_src)
 
         return logits, {"attn": [attn], "inner_states": inner_states, "model_prob": model_prob}
 
