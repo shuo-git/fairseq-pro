@@ -928,18 +928,6 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             tgt_k = tgt_v = None
             tgt_k_padding_mask = None
             tgt_k_toks = tgt_v_toks = None
-        if attend_kv_table and incremental_state is not None:
-            saved_state = self.get_incremental_state(incremental_state, "plug_in_state")
-            if saved_state is not None:
-                tgt_v_toks = saved_state['target_value']
-            else:
-                saved_state = {'target_value': tgt_v_toks}
-            # Decoding Rule-1 by Shuo
-            selected_tok = prev_output_tokens # B x 1
-            selected_mask = tgt_v_toks.eq(selected_tok)
-            tgt_v_toks = tgt_v_toks * (~selected_mask) + self.padding_idx * selected_mask # B x T(v)
-            saved_state['target_value'] = tgt_v_toks
-            self.set_incremental_state(incremental_state, 'plug_in_state', saved_state)
 
         # if self.quant_noise is not None:
         #     x = self.quant_noise(x)
@@ -1034,6 +1022,18 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         model_prob = utils.softmax(logits, dim=-1) + epsilon # B x T x V
 
         if attend_kv_table:
+            # if incremental_state is not None:
+            #     # Decoding Rule-1 by Shuo
+            #     saved_state = self.get_incremental_state(incremental_state, "plug_in_state")
+            #     if saved_state is not None:
+            #         tgt_v_toks = saved_state['target_value']
+            #     else:
+            #         saved_state = {'target_value': tgt_v_toks}
+            #     selected_tok = prev_output_tokens # B x 1
+            #     selected_mask = tgt_v_toks.eq(selected_tok)
+            #     tgt_v_toks = tgt_v_toks * (~selected_mask) + self.padding_idx * selected_mask # B x T(v)
+            #     saved_state['target_value'] = tgt_v_toks
+            #     self.set_incremental_state(incremental_state, 'plug_in_state', saved_state)
             tgt_v_padding_mask = tgt_v_toks.eq(self.padding_idx)
             last_tgt_v = self.embed_scale * self.embed_tokens(tgt_v_toks) * (~tgt_v_padding_mask).unsqueeze(-1) # B x T(v) x C
             cos_sim = _cosine_similarity(x, last_tgt_v, epsilon) # B x T x T(v), need to be regularized
@@ -1043,19 +1043,19 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             plug_in_v = tgt_v_toks.gather(index=plug_in_v_idx, dim=-1).unsqueeze(-1) # B x T x 1
             plug_in_prob = torch.zeros_like(model_prob).scatter(dim=-1, index=plug_in_v, src=plug_in_sim) # B x T x V
             plug_in_gate = self.plug_ins[-1](x.transpose(0, 1), last_tgt_v.transpose(0, 1), tgt_v_padding_mask).transpose(0, 1) # B x T x 1
-            if incremental_state is not None:
-                # Decoding Rule-3 by Shuo
-                plug_in_gate *= (1.0 * math.exp(1.0 * current_time_step))
+            # if incremental_state is not None:
+            #     # Decoding Rule-3 by Shuo
+            #     plug_in_gate *= (1.0 * math.exp(1.0 * current_time_step))
             model_prob += plug_in_prob * plug_in_gate
             model_prob = torch.min(torch.ones_like(model_prob), model_prob) # < 1
             # model_prob = torch.max(torch.ones_like(model_prob) * epsilon, model_prob) # > 0
-            if incremental_state is not None:
-                assert saved_state is not None
-                # Decoding Rule-2 by Shuo
-                may_end_mask = torch.all(tgt_v_toks.eq(self.padding_idx), dim=-1, keepdim=True) # B x 1
-                may_end_idx = (self.padding_idx * may_end_mask + self.dictionary.eos() * (~may_end_mask)).unsqueeze(-1).long() # B x 1 x 1
-                may_end_src = torch.zeros_like(may_end_idx).float() + epsilon
-                model_prob = model_prob.scatter(dim=-1, index=may_end_idx, src=may_end_src)
+            # if incremental_state is not None:
+            #     Decoding Rule-2 by Shuo
+            #     assert saved_state is not None
+            #     may_end_mask = torch.all(tgt_v_toks.eq(self.padding_idx), dim=-1, keepdim=True) # B x 1
+            #     may_end_idx = (self.padding_idx * may_end_mask + self.dictionary.eos() * (~may_end_mask)).unsqueeze(-1).long() # B x 1 x 1
+            #     may_end_src = torch.zeros_like(may_end_idx).float() + epsilon
+            #     model_prob = model_prob.scatter(dim=-1, index=may_end_idx, src=may_end_src)
 
         return logits, {"attn": [attn], "inner_states": inner_states, "model_prob": model_prob}
 
