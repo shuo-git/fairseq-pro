@@ -1022,18 +1022,18 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         model_prob = utils.softmax(logits, dim=-1) + epsilon # B x T x V
 
         if attend_kv_table:
-            # if incremental_state is not None:
-            #     # Decoding Rule-1 by Shuo
-            #     saved_state = self.get_incremental_state(incremental_state, "plug_in_state")
-            #     if saved_state is not None:
-            #         tgt_v_toks = saved_state['target_value']
-            #     else:
-            #         saved_state = {'target_value': tgt_v_toks}
-            #     selected_tok = prev_output_tokens # B x 1
-            #     selected_mask = tgt_v_toks.eq(selected_tok)
-            #     tgt_v_toks = tgt_v_toks * (~selected_mask) + self.padding_idx * selected_mask # B x T(v)
-            #     saved_state['target_value'] = tgt_v_toks
-            #     self.set_incremental_state(incremental_state, 'plug_in_state', saved_state)
+            # Decoding Rule-1 by Shuo
+            if incremental_state is not None:
+                saved_state = self.get_incremental_state(incremental_state, "plug_in_state")
+                if saved_state is not None:
+                    tgt_v_toks = saved_state['target_value']
+                else:
+                    saved_state = {'target_value': tgt_v_toks}
+                selected_tok = prev_output_tokens # B x 1
+                selected_mask = tgt_v_toks.eq(selected_tok)
+                tgt_v_toks = tgt_v_toks * (~selected_mask) + self.padding_idx * selected_mask # B x T(v)
+                saved_state['target_value'] = tgt_v_toks
+                self.set_incremental_state(incremental_state, 'plug_in_state', saved_state)
             tgt_v_padding_mask = tgt_v_toks.eq(self.padding_idx)
             last_tgt_v = self.embed_scale * self.embed_tokens(tgt_v_toks) * (~tgt_v_padding_mask).unsqueeze(-1) # B x T(v) x C
             cos_sim = _cosine_similarity(x, last_tgt_v, epsilon) # B x T x T(v), need to be regularized
