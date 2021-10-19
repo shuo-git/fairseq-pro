@@ -1047,7 +1047,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
 
             # Decoding Rule-3 by Shuo
             if incremental_state is not None:
-                plug_in_gate *= (1.0 * math.exp(1.0 * current_time_step))
+                plug_in_gate *= (1.0 * math.exp(0.0135 * current_time_step))
 
             model_prob += plug_in_prob * plug_in_gate
             model_prob = torch.min(torch.ones_like(model_prob), model_prob) # < 1
