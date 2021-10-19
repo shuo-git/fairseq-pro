@@ -1048,13 +1048,13 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             #     plug_in_gate *= (1.0 * math.exp(1.0 * current_time_step))
             model_prob += plug_in_prob * plug_in_gate
             model_prob = torch.min(torch.ones_like(model_prob), model_prob) # < 1
-            # if incremental_state is not None:
-            #     Decoding Rule-2 by Shuo
-            #     assert saved_state is not None
-            #     may_end_mask = torch.all(tgt_v_toks.eq(self.padding_idx), dim=-1, keepdim=True) # B x 1
-            #     may_end_idx = (self.padding_idx * may_end_mask + self.dictionary.eos() * (~may_end_mask)).unsqueeze(-1).long() # B x 1 x 1
-            #     may_end_src = torch.zeros_like(may_end_idx).float() + epsilon
-            #     model_prob = model_prob.scatter(dim=-1, index=may_end_idx, src=may_end_src)
+            # Decoding Rule-2 by Shuo
+            if incremental_state is not None:
+                assert saved_state is not None
+                may_end_mask = torch.all(tgt_v_toks.eq(self.padding_idx), dim=-1, keepdim=True) # B x 1
+                may_end_idx = (self.padding_idx * may_end_mask + self.dictionary.eos() * (~may_end_mask)).unsqueeze(-1).long() # B x 1 x 1
+                may_end_src = torch.zeros_like(may_end_idx).float() + epsilon
+                model_prob = model_prob.scatter(dim=-1, index=may_end_idx, src=may_end_src)
 
         return logits, {"attn": [attn], "inner_states": inner_states, "model_prob": model_prob}
 
