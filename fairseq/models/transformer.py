@@ -1022,7 +1022,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         model_prob = utils.softmax(logits, dim=-1) + epsilon # B x T x V
 
         if attend_kv_table:
-            Decoding Rule-1 by Shuo
+            # Decoding Rule-1 by Shuo
             if incremental_state is not None:
                 saved_state = self.get_incremental_state(incremental_state, "plug_in_state")
                 if saved_state is not None:
