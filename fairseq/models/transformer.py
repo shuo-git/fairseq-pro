@@ -1034,6 +1034,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                 tgt_v_toks = tgt_v_toks * (~selected_mask) + self.padding_idx * selected_mask # B x T(v)
                 saved_state['target_value'] = tgt_v_toks
                 self.set_incremental_state(incremental_state, 'plug_in_state', saved_state)
+
             tgt_v_padding_mask = tgt_v_toks.eq(self.padding_idx)
             last_tgt_v = self.embed_scale * self.embed_tokens(tgt_v_toks) * (~tgt_v_padding_mask).unsqueeze(-1) # B x T(v) x C
             cos_sim = _cosine_similarity(x, last_tgt_v, epsilon) # B x T x T(v), need to be regularized
@@ -1043,11 +1044,15 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             plug_in_v = tgt_v_toks.gather(index=plug_in_v_idx, dim=-1).unsqueeze(-1) # B x T x 1
             plug_in_prob = torch.zeros_like(model_prob).scatter(dim=-1, index=plug_in_v, src=plug_in_sim) # B x T x V
             plug_in_gate = self.plug_ins[-1](x.transpose(0, 1), last_tgt_v.transpose(0, 1), tgt_v_padding_mask).transpose(0, 1) # B x T x 1
-            # if incremental_state is not None:
-            #     # Decoding Rule-3 by Shuo
-            #     plug_in_gate *= (1.0 * math.exp(1.0 * current_time_step))
+
+            # Decoding Rule-3 by Shuo
+            if incremental_state is not None:
+                plug_in_gate *= (1.0 * math.exp(1.0 * current_time_step))
+
             model_prob += plug_in_prob * plug_in_gate
             model_prob = torch.min(torch.ones_like(model_prob), model_prob) # < 1
+            model_prob = torch.max(torch.ones_like(model_prob) * epsilon, model_prob) # > 0
+
             # Decoding Rule-2 by Shuo
             if incremental_state is not None:
                 assert saved_state is not None
