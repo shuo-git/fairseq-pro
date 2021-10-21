@@ -491,7 +491,8 @@ class TransformerEncoder(FairseqEncoder):
                 query=tgt_k,
                 key=tgt_v,
                 value=tgt_v,
-                key_padding_mask=tgt_v_padding_mask
+                key_padding_mask=tgt_v_padding_mask,
+                kv_aggregator=True,
             ) # T(k) x 3B x V
             tgt_k = tgt_k.transpose(0, 1).view(bsz, -1, embed_dim).transpose(0, 1) # 3T(k) x B x C
             tgt_v = tgt_v.transpose(0, 1).contiguous().view(bsz, -1, embed_dim).transpose(0, 1) # 3T(k) x B x C

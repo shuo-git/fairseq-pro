@@ -123,6 +123,7 @@ class MultiheadAttention(nn.Module):
         past_key: Optional[Tensor] = None,
         past_value: Optional[Tensor] = None,
         past_key_padding_mask: Optional[torch.Tensor] = None,
+        kv_aggregator: bool = False,
     ) -> Tuple[Tensor, Optional[Tensor]]:
         """Input shape: Time x Batch x Channel
 
@@ -211,7 +212,10 @@ class MultiheadAttention(nn.Module):
                 k = v = None
             else:
                 k = self.k_proj(key)
-                v = self.v_proj(key)
+                if kv_aggregator:
+                    v = key
+                else:
+                    v = self.v_proj(key)
 
         else:
             assert key is not None and value is not None
@@ -407,7 +411,8 @@ class MultiheadAttention(nn.Module):
         # else:
         #     attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
         attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
-        attn = self.out_proj(attn)
+        if not kv_aggregator:
+            attn = self.out_proj(attn)
         attn_weights: Optional[Tensor] = None
         if need_weights:
             attn_weights = attn_weights_float.view(
