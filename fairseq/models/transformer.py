@@ -1023,7 +1023,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             sim_mt = torch.bmm(a_norm, b_norm.transpose(1, 2))
             return sim_mt
 
-        epsilon = 1e-8
+        epsilon = 1e-12
         logits = self.output_layer(x)
         model_prob = utils.softmax(logits, dim=-1) + epsilon # B x T x V
 
@@ -1047,7 +1047,8 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             cos_sim.masked_fill_(tgt_v_padding_mask.unsqueeze(1), 0.)
             if self_attn_padding_mask is not None:
                 cos_sim.masked_fill_(self_attn_padding_mask.unsqueeze(-1), 0.)
-            rank_reg = torch.bmm(cos_sim, cos_sim.transpose(1, 2))
+            norm_cos_sim = torch.nn.functional.normalize(cos_sim, dim=-1, eps=epsilon)
+            rank_reg = torch.bmm(norm_cos_sim, norm_cos_sim.transpose(1, 2))
             rank_reg.masked_fill_(torch.eye(seq_len).to(rank_reg).to(bool).unsqueeze(0), 0.) # B x T x T
             rank_reg = rank_reg.sum() # lower is better
             plug_in_sim = cos_sim.max(dim=-1, keepdim=True).values # B x T x 1
