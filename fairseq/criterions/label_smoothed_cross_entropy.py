@@ -48,7 +48,8 @@ def label_smoothed_nll_loss(lprobs, target, epsilon, ignore_index=None, reduce=T
 class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
 
     def __init__(self, task, sentence_avg, label_smoothing,
-                 ls_segment_indices, ls_segment_weights):
+                 ls_segment_indices, ls_segment_weights,
+                 lambda_rank_reg):
         super().__init__(task)
         self.sentence_avg = sentence_avg
         self.eps = label_smoothing
@@ -57,6 +58,7 @@ class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
         ls_seg_weights = ls_segment_weights.split(',')
         self.ls_seg_weights = [float(x) for x in ls_seg_weights]
         assert len(self.ls_seg_indices) == len(self.ls_seg_weights)
+        self.lambda_rank_reg = lambda_rank_reg
 
     @staticmethod
     def add_args(parser):
@@ -68,6 +70,7 @@ class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
                             help='indices of the segments')
         parser.add_argument('--ls-segment-weights', type=str, default='0,1',
                             help='weights of the segments')
+        parser.add_argument('--lambda-rank-reg', default=0., type=float, metavar='D')
         # fmt: on
 
     def forward(self, model, sample, reduce=True):
@@ -81,6 +84,11 @@ class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
 
         net_output = model(**sample['net_input'])
         loss, nll_loss, activate_toks = self.compute_loss(model, net_output, sample, reduce=reduce)
+        if self.lambda_rank_reg > 0. and net_input[1].get('rank_reg', None) is not None:
+            rank_reg = net_output[1].get('rank_reg')
+        else:
+            rank_reg = 0.
+        loss += (self.lambda_rank_reg * rank_reg)
         if activate_toks is not None:
             sample_size = activate_toks
         else:
@@ -91,6 +99,7 @@ class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
             'ntokens': sample['ntokens'],
             'nsentences': sample['target'].size(0),
             'sample_size': sample_size,
+            'rank_reg': rank_reg,
         }
         return loss, sample_size, logging_output
 
@@ -118,9 +127,11 @@ class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
         nll_loss_sum = sum(log.get('nll_loss', 0) for log in logging_outputs)
         ntokens = sum(log.get('ntokens', 0) for log in logging_outputs)
         sample_size = sum(log.get('sample_size', 0) for log in logging_outputs)
+        rank_reg_sum = sum(log.get('rank_reg', 0) for log in logging_outputs)
 
         metrics.log_scalar('loss', loss_sum / sample_size / math.log(2), sample_size, round=3)
         metrics.log_scalar('nll_loss', nll_loss_sum / ntokens / math.log(2), ntokens, round=3)
+        metrics.log_scalar('rank_reg', rank_reg_sum / sample_size, sample_size, round=3)
         metrics.log_derived('ppl', lambda meters: utils.get_perplexity(meters['nll_loss'].avg))
 
     @staticmethod
