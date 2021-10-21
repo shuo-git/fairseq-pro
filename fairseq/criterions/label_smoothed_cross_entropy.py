@@ -84,7 +84,7 @@ class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
 
         net_output = model(**sample['net_input'])
         loss, nll_loss, activate_toks = self.compute_loss(model, net_output, sample, reduce=reduce)
-        if self.lambda_rank_reg > 0. and net_input[1].get('rank_reg', None) is not None:
+        if self.lambda_rank_reg > 0. and net_output[1].get('rank_reg', None) is not None:
             rank_reg = net_output[1].get('rank_reg')
         else:
             rank_reg = 0.
