@@ -192,6 +192,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         parser.add_argument('--plug-in-forward', default='bottom',
                             help='bottom or pipe')
         parser.add_argument('--plug-in-project-v', action='store_true', default=False)
+        parser.add_argument('--aggregator-project-v', action='store_true', default=False)
         # fmt: on
 
     @classmethod
@@ -492,7 +493,7 @@ class TransformerEncoder(FairseqEncoder):
                 key=tgt_v,
                 value=tgt_v,
                 key_padding_mask=tgt_v_padding_mask,
-                kv_aggregator=True,
+                kv_aggregator=(not self.args.aggregator_project_v),
             ) # T(k) x 3B x V
             tgt_k = tgt_k.transpose(0, 1).view(bsz, -1, embed_dim).transpose(0, 1) # 3T(k) x B x C
             tgt_v = tgt_v.transpose(0, 1).contiguous().view(bsz, -1, embed_dim).transpose(0, 1) # 3T(k) x B x C
