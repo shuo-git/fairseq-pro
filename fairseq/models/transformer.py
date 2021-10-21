@@ -191,7 +191,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='type1 or type2 or type3 or ...')
         parser.add_argument('--plug-in-forward', default='bottom',
                             help='bottom or pipe')
-        parser.add_argument('--plug-in-project-v', type=bool, default=True)
+        parser.add_argument('--plug-in-project-v', action='store_true', default=False)
         # fmt: on
 
     @classmethod
