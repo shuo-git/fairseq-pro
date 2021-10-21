@@ -192,6 +192,29 @@ class Target_Plug_In_Layer_Type2(nn.Module):
         return k, v
 
 
+class Target_Plug_In_Layer_Type3(nn.Module):
+    def __init__(self, args, my_dim, head_num, bias=True):
+        super().__init__()
+        self.dropout_module = FairseqDropout(args.kv_projection_dropout, module_name=self.__class__.__name__)
+        self.k_fc1 = nn.Linear(my_dim, my_dim, bias=bias)
+        self.k_fc2 = nn.Linear(my_dim, my_dim, bias=bias)
+        self.v_fc1 = nn.Linear(my_dim, my_dim, bias=bias)
+        self.v_fc2 = nn.Linear(my_dim, my_dim, bias=bias)
+        nn.init.xavier_uniform_(self.k_fc1.weight, gain=1 / math.sqrt(2))
+        nn.init.xavier_uniform_(self.k_fc2.weight, gain=1 / math.sqrt(2))
+        nn.init.xavier_uniform_(self.v_fc1.weight, gain=1 / math.sqrt(2))
+        nn.init.xavier_uniform_(self.v_fc2.weight, gain=1 / math.sqrt(2))
+        self.k_activation_fn = utils.get_activation_fn('gelu')
+        self.v_activation_fn = utils.get_activation_fn('gelu')
+        self.k_layer_norm = LayerNorm(my_dim)
+        self.v_layer_norm = LayerNorm(my_dim)
+
+    def forward(self, k, v):
+        k = self.k_layer_norm(k + self.dropout_module(self.k_fc2(self.dropout_module(self.k_activation_fn(self.k_fc1(k))))))
+        v = self.v_layer_norm(v + self.dropout_module(self.v_fc2(self.dropout_module(self.v_activation_fn(self.v_fc1(v))))))
+        return k, v
+
+
 class Softmax_Plug_In_Gate(nn.Module):
     def __init__(self, args, my_dim, head_num, bias=True):
         super().__init__()

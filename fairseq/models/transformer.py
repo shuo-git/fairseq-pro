@@ -28,6 +28,7 @@ from fairseq.modules import (
     TransformerEncoderLayer,
     Target_Plug_In_Layer_Type1,
     Target_Plug_In_Layer_Type2,
+    Target_Plug_In_Layer_Type3,
     Softmax_Plug_In_Gate,
 )
 from fairseq.modules import LayerNorm, MultiheadAttention
@@ -186,6 +187,10 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='word dropout probability')
         parser.add_argument('--target-kv-table', action='store_true', default=False)
         parser.add_argument('--encoder-out-key', action='store_true', default=False)
+        parser.add_argument('--plug-in-type', default='type1',
+                            help='type1 or type2 or type3 or ...')
+        parser.add_argument('--plug-in-forward', default='bottom',
+                            help='bottom or pipe')
         # fmt: on
 
     @classmethod
@@ -375,7 +380,7 @@ class TransformerEncoder(FairseqEncoder):
             self.plug_ins = nn.ModuleList([])
             self.plug_ins.extend(
                 [
-                    self.build_plug_in_layer(args, embed_dim, args.encoder_attention_heads)
+                    build_plug_in_layer(args, embed_dim, args.encoder_attention_heads)
                     for _ in range(args.encoder_layers)
                 ]
             )
@@ -409,9 +414,6 @@ class TransformerEncoder(FairseqEncoder):
             self.layer_norm = LayerNorm(embed_dim)
         else:
             self.layer_norm = None
-
-    def build_plug_in_layer(self, args, my_dim, head_num):
-        return Target_Plug_In_Layer_Type2(args, my_dim, head_num)
 
     def build_prefix(self, args, num_embed, embed_dim):
         prefix_emb = nn.Embedding(num_embed + 1, embed_dim, padding_idx=0)
@@ -509,9 +511,15 @@ class TransformerEncoder(FairseqEncoder):
         encoder_states = [] if return_all_hiddens else None
 
         # encoder layers
+        if attend_kv_table:
+            temp_tgt_k = tgt_k
+            temp_tgt_v = tgt_v
         for idx, layer in enumerate(self.layers):
             if attend_kv_table:
-                temp_tgt_k, temp_tgt_v = self.plug_ins[idx](tgt_k, tgt_v)
+                if self.args.plug_in_forward == 'bottom':
+                    temp_tgt_k, temp_tgt_v = self.plug_ins[idx](tgt_k, tgt_v)
+                else:
+                    temp_tgt_k, temp_tgt_v = self.plug_ins[idx](temp_tgt_k, temp_tgt_v)
             else:
                 temp_tgt_k = temp_tgt_v = None
             x = layer(
@@ -714,7 +722,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             self.plug_ins = nn.ModuleList([])
             self.plug_ins.extend(
                 [
-                    self.build_plug_in_layer(args, embed_dim, args.decoder_attention_heads)
+                    build_plug_in_layer(args, embed_dim, args.decoder_attention_heads)
                     for _ in range(args.decoder_layers)
                 ]
             )
@@ -780,9 +788,6 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             nn.init.normal_(
                 self.output_projection.weight, mean=0, std=self.output_embed_dim ** -0.5
             )
-
-    def build_plug_in_layer(self, args, my_dim, head_num):
-        return Target_Plug_In_Layer_Type2(args, my_dim, head_num)
 
     def build_softmax_plug_in(self, args, my_dim, head_num):
         return Softmax_Plug_In_Gate(args, my_dim, head_num)
@@ -1174,6 +1179,15 @@ def Linear(in_features, out_features, bias=True):
     if bias:
         nn.init.constant_(m.bias, 0.0)
     return m
+
+
+def build_plug_in_layer(args, my_dim, head_num):
+    if args.plug_in_type == 'type1':
+        return Target_Plug_In_Layer_Type1(args, my_dim, head_num)
+    elif args.plug_in_type == 'type2':
+        return Target_Plug_In_Layer_Type2(args, my_dim, head_num)
+    elif args.plug_in_type == 'type3':
+        return Target_Plug_In_Layer_Type3(args, my_dim, head_num)
 
 
 @register_model_architecture("transformer", "transformer")
