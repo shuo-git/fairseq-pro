@@ -1045,15 +1045,15 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             plug_in_prob = torch.zeros_like(model_prob).scatter(dim=-1, index=plug_in_v, src=plug_in_sim) # B x T x V
             plug_in_gate = self.plug_ins[-1](x.transpose(0, 1), last_tgt_v.transpose(0, 1), tgt_v_padding_mask).transpose(0, 1) # B x T x 1
 
-            # Decoding Rule-3 by Shuo
-            # if incremental_state is not None:
-            #     plug_in_gate *= (1.0 * math.exp(0.0135 * current_time_step))
+            # Decoding Rule-2 by Shuo
+            if incremental_state is not None:
+                plug_in_gate *= (1.0 * math.exp(0.0135 * current_time_step))
 
             model_prob += plug_in_prob * plug_in_gate
             model_prob = torch.min(torch.ones_like(model_prob), model_prob) # < 1
             model_prob = torch.max(torch.ones_like(model_prob) * epsilon, model_prob) # > 0
 
-            # Decoding Rule-2 by Shuo
+            # Decoding Rule-3 by Shuo
             # if incremental_state is not None:
             #     assert saved_state is not None
             #     may_end_mask = torch.all(tgt_v_toks.eq(self.padding_idx), dim=-1, keepdim=True) # B x 1
