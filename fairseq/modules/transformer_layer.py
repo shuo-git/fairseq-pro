@@ -163,9 +163,10 @@ class Target_Plug_In_Layer_Type1(nn.Module):
         self.k_layer_norm = LayerNorm(my_dim)
         self.v_layer_norm = LayerNorm(my_dim)
 
-    def forward(self, k, v):
+    def forward(self, k, v, project_v=True):
         k = self.k_layer_norm(self.dropout_module(self.k_proj(k)))
-        v = self.v_layer_norm(self.dropout_module(self.v_proj(v)))
+        if project_v:
+            v = self.v_layer_norm(self.dropout_module(self.v_proj(v)))
         return k, v
 
 
@@ -186,9 +187,10 @@ class Target_Plug_In_Layer_Type2(nn.Module):
         self.k_layer_norm = LayerNorm(my_dim)
         self.v_layer_norm = LayerNorm(my_dim)
 
-    def forward(self, k, v):
+    def forward(self, k, v, project_v=True):
         k = self.k_layer_norm(self.dropout_module(self.k_fc2(self.dropout_module(self.k_activation_fn(self.k_fc1(k))))))
-        v = self.v_layer_norm(self.dropout_module(self.v_fc2(self.dropout_module(self.v_activation_fn(self.v_fc1(v))))))
+        if project_v:
+            v = self.v_layer_norm(self.dropout_module(self.v_fc2(self.dropout_module(self.v_activation_fn(self.v_fc1(v))))))
         return k, v
 
 
@@ -209,9 +211,10 @@ class Target_Plug_In_Layer_Type3(nn.Module):
         self.k_layer_norm = LayerNorm(my_dim)
         self.v_layer_norm = LayerNorm(my_dim)
 
-    def forward(self, k, v):
+    def forward(self, k, v, project_v=True):
         k = self.k_layer_norm(k + self.dropout_module(self.k_fc2(self.dropout_module(self.k_activation_fn(self.k_fc1(k))))))
-        v = self.v_layer_norm(v + self.dropout_module(self.v_fc2(self.dropout_module(self.v_activation_fn(self.v_fc1(v))))))
+        if project_v:
+            v = self.v_layer_norm(v + self.dropout_module(self.v_fc2(self.dropout_module(self.v_activation_fn(self.v_fc1(v))))))
         return k, v
 
 

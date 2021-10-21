@@ -191,6 +191,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='type1 or type2 or type3 or ...')
         parser.add_argument('--plug-in-forward', default='bottom',
                             help='bottom or pipe')
+        parser.add_argument('--plug-in-project-v', type=bool, default=True)
         # fmt: on
 
     @classmethod
@@ -517,9 +518,9 @@ class TransformerEncoder(FairseqEncoder):
         for idx, layer in enumerate(self.layers):
             if attend_kv_table:
                 if self.args.plug_in_forward == 'bottom':
-                    temp_tgt_k, temp_tgt_v = self.plug_ins[idx](tgt_k, tgt_v)
+                    temp_tgt_k, temp_tgt_v = self.plug_ins[idx](tgt_k, tgt_v, self.args.plug_in_project_v)
                 else:
-                    temp_tgt_k, temp_tgt_v = self.plug_ins[idx](temp_tgt_k, temp_tgt_v)
+                    temp_tgt_k, temp_tgt_v = self.plug_ins[idx](temp_tgt_k, temp_tgt_v, self.args.plug_in_project_v)
             else:
                 temp_tgt_k = temp_tgt_v = None
             x = layer(
@@ -974,7 +975,10 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         inner_states: List[Optional[Tensor]] = [x]
         for idx, layer in enumerate(self.layers):
             if attend_kv_table:
-                temp_tgt_k, temp_tgt_v = self.plug_ins[idx](tgt_k, tgt_v)
+                if self.args.plug_in_forward == 'bottom':
+                    temp_tgt_k, temp_tgt_v = self.plug_ins[idx](tgt_k, tgt_v, self.args.plug_in_project_v)
+                else:
+                    temp_tgt_k, temp_tgt_v = self.plug_ins[idx](temp_tgt_k, temp_tgt_v, self.args.plug_in_project_v)
             else:
                 temp_tgt_k = temp_tgt_v = None
 
