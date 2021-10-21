@@ -222,7 +222,7 @@ class MultiheadAttention(nn.Module):
 
         if attend_kv_table:
             past_key = self.k_proj(past_key)
-            past_value = self.v_proj(past_value)
+            # past_value = self.v_proj(past_value)
 
         # if self.bias_k is not None:
         #     assert self.bias_v is not None
