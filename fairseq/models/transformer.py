@@ -520,9 +520,9 @@ class TransformerEncoder(FairseqEncoder):
         for idx, layer in enumerate(self.layers):
             if attend_kv_table:
                 if self.args.plug_in_forward == 'bottom':
-                    temp_tgt_k, temp_tgt_v = self.plug_ins[idx](tgt_k, tgt_v, self.args.plug_in_project_v)
+                    temp_tgt_k, temp_tgt_v = self.plug_ins[idx](tgt_k, tgt_v)
                 else:
-                    temp_tgt_k, temp_tgt_v = self.plug_ins[idx](temp_tgt_k, temp_tgt_v, self.args.plug_in_project_v)
+                    temp_tgt_k, temp_tgt_v = self.plug_ins[idx](temp_tgt_k, temp_tgt_v)
             else:
                 temp_tgt_k = temp_tgt_v = None
             x = layer(
@@ -973,14 +973,17 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             self_attn_padding_mask = prev_output_tokens.eq(self.padding_idx)
 
         # decoder layers
+        if attend_kv_table:
+            temp_tgt_k = tgt_k
+            temp_tgt_v = tgt_v
         attn: Optional[Tensor] = None
         inner_states: List[Optional[Tensor]] = [x]
         for idx, layer in enumerate(self.layers):
             if attend_kv_table:
                 if self.args.plug_in_forward == 'bottom':
-                    temp_tgt_k, temp_tgt_v = self.plug_ins[idx](tgt_k, tgt_v, self.args.plug_in_project_v)
+                    temp_tgt_k, temp_tgt_v = self.plug_ins[idx](tgt_k, tgt_v)
                 else:
-                    temp_tgt_k, temp_tgt_v = self.plug_ins[idx](temp_tgt_k, temp_tgt_v, self.args.plug_in_project_v)
+                    temp_tgt_k, temp_tgt_v = self.plug_ins[idx](temp_tgt_k, temp_tgt_v)
             else:
                 temp_tgt_k = temp_tgt_v = None
 
