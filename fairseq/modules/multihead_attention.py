@@ -38,8 +38,10 @@ class MultiheadAttention(nn.Module):
         encoder_decoder_attention=False,
         q_noise=0.0,
         qn_block_size=8,
+        aggregator_v_project=True,
     ):
         super().__init__()
+        self.aggregator_v_project = aggregator_v_project
         self.embed_dim = embed_dim
         self.kdim = kdim if kdim is not None else embed_dim
         self.vdim = vdim if vdim is not None else embed_dim
@@ -64,10 +66,16 @@ class MultiheadAttention(nn.Module):
         )
 
         self.k_proj = quant_noise(nn.Linear(self.kdim, embed_dim, bias=bias), q_noise, qn_block_size)
-        self.v_proj = quant_noise(nn.Linear(self.vdim, embed_dim, bias=bias), q_noise, qn_block_size)
+        if self.aggregator_v_project:
+            self.v_proj = quant_noise(nn.Linear(self.vdim, embed_dim, bias=bias), q_noise, qn_block_size)
+        else:
+            self.v_proj = None
         self.q_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
-        self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+        if self.aggregator_v_project:
+            self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+        else:
+            self.out_proj = None
 
         if add_bias_kv:
             self.bias_k = Parameter(torch.Tensor(1, 1, embed_dim))
@@ -206,7 +214,8 @@ class MultiheadAttention(nn.Module):
         if self.self_attention:
             q = self.q_proj(query)
             k = self.k_proj(query)
-            v = self.v_proj(query)
+            if self.v_proj is not None:
+                v = self.v_proj(query)
         elif self.encoder_decoder_attention:
             # encoder-decoder attention
             q = self.q_proj(query)
@@ -215,13 +224,15 @@ class MultiheadAttention(nn.Module):
                 k = v = None
             else:
                 k = self.k_proj(key)
-                v = self.v_proj(key)
+                if self.v_proj is not None:
+                    v = self.v_proj(key)
 
         else:
             assert key is not None and value is not None
             q = self.q_proj(query)
             k = self.k_proj(key)
-            v = self.v_proj(value)
+            if self.v_proj is not None:
+                v = self.v_proj(value)
         q *= self.scaling
 
         if attend_kv_table:
@@ -416,7 +427,8 @@ class MultiheadAttention(nn.Module):
         # else:
         #     attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
         attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
-        attn = self.out_proj(attn)
+        if self.out_proj is not None:
+            attn = self.out_proj(attn)
         attn_weights: Optional[Tensor] = None
         if need_weights:
             attn_weights = attn_weights_float.view(

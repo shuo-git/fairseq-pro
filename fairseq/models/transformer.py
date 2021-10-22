@@ -195,6 +195,8 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='both or key or value or none')
         parser.add_argument('--plug-in-component', type=str, default='encdec',
                             help='encdec or enc or dec or none')
+        parser.add_argument('--plug-in-v-project', action='store_true', default=False)
+        parser.add_argument('--aggregator-v-project', action='store_true', default=False)
         # fmt: on
 
     @classmethod
@@ -262,6 +264,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
             vdim=getattr(args, "encoder_embed_dim", None),
             dropout=args.kv_attention_dropout,
             encoder_decoder_attention=True,
+            aggregator_v_project=args.aggregator_v_project,
         )
 
     @classmethod

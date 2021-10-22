@@ -161,13 +161,18 @@ class Target_Plug_In_Layer_Type1(nn.Module):
         self.k_proj = nn.Linear(my_dim, my_dim, bias=bias)
         nn.init.xavier_uniform_(self.k_proj.weight, gain=1 / math.sqrt(2))
         self.k_layer_norm = LayerNorm(my_dim)
-        self.v_proj = nn.Linear(my_dim, my_dim, bias=bias)
-        nn.init.xavier_uniform_(self.v_proj.weight, gain=1 / math.sqrt(2))
-        self.v_layer_norm = LayerNorm(my_dim)
+        if args.plug_in_v_project:
+            self.v_proj = nn.Linear(my_dim, my_dim, bias=bias)
+            nn.init.xavier_uniform_(self.v_proj.weight, gain=1 / math.sqrt(2))
+            self.v_layer_norm = LayerNorm(my_dim)
+            self.v_project = True
+        else:
+            self.v_project = False
 
     def forward(self, k, v):
         k = self.k_layer_norm(self.dropout_module(self.k_proj(k)))
-        v = self.v_layer_norm(self.dropout_module(self.v_proj(v)))
+        if self.v_project:
+            v = self.v_layer_norm(self.dropout_module(self.v_proj(v)))
         return k, v
 
 
@@ -181,16 +186,21 @@ class Target_Plug_In_Layer_Type2(nn.Module):
         nn.init.xavier_uniform_(self.k_fc2.weight, gain=1 / math.sqrt(2))
         self.k_activation_fn = utils.get_activation_fn('tanh')
         self.k_layer_norm = LayerNorm(my_dim)
-        self.v_fc1 = nn.Linear(my_dim, my_dim, bias=bias)
-        self.v_fc2 = nn.Linear(my_dim, my_dim, bias=bias)
-        nn.init.xavier_uniform_(self.v_fc1.weight, gain=1 / math.sqrt(2))
-        nn.init.xavier_uniform_(self.v_fc2.weight, gain=1 / math.sqrt(2))
-        self.v_activation_fn = utils.get_activation_fn('tanh')
-        self.v_layer_norm = LayerNorm(my_dim)
+        if args.plug_in_v_project:
+            self.v_fc1 = nn.Linear(my_dim, my_dim, bias=bias)
+            self.v_fc2 = nn.Linear(my_dim, my_dim, bias=bias)
+            nn.init.xavier_uniform_(self.v_fc1.weight, gain=1 / math.sqrt(2))
+            nn.init.xavier_uniform_(self.v_fc2.weight, gain=1 / math.sqrt(2))
+            self.v_activation_fn = utils.get_activation_fn('tanh')
+            self.v_layer_norm = LayerNorm(my_dim)
+            self.v_project = True
+        else:
+            self.v_project = False
 
     def forward(self, k, v):
         k = self.k_layer_norm(self.dropout_module(self.k_fc2(self.dropout_module(self.k_activation_fn(self.k_fc1(k))))))
-        v = self.v_layer_norm(self.dropout_module(self.v_fc2(self.dropout_module(self.v_activation_fn(self.v_fc1(v))))))
+        self.v_project:
+            v = self.v_layer_norm(self.dropout_module(self.v_fc2(self.dropout_module(self.v_activation_fn(self.v_fc1(v))))))
         return k, v
 
 
@@ -204,16 +214,21 @@ class Target_Plug_In_Layer_Type3(nn.Module):
         nn.init.xavier_uniform_(self.k_fc2.weight, gain=1 / math.sqrt(2))
         self.k_activation_fn = utils.get_activation_fn('tanh')
         self.k_layer_norm = LayerNorm(my_dim)
-        self.v_fc1 = nn.Linear(my_dim, 2 * my_dim, bias=bias)
-        self.v_fc2 = nn.Linear(2 * my_dim, my_dim, bias=bias)
-        nn.init.xavier_uniform_(self.v_fc1.weight, gain=1 / math.sqrt(2))
-        nn.init.xavier_uniform_(self.v_fc2.weight, gain=1 / math.sqrt(2))
-        self.v_activation_fn = utils.get_activation_fn('tanh')
-        self.v_layer_norm = LayerNorm(my_dim)
+        if args.plug_in_v_project:
+            self.v_fc1 = nn.Linear(my_dim, 2 * my_dim, bias=bias)
+            self.v_fc2 = nn.Linear(2 * my_dim, my_dim, bias=bias)
+            nn.init.xavier_uniform_(self.v_fc1.weight, gain=1 / math.sqrt(2))
+            nn.init.xavier_uniform_(self.v_fc2.weight, gain=1 / math.sqrt(2))
+            self.v_activation_fn = utils.get_activation_fn('tanh')
+            self.v_layer_norm = LayerNorm(my_dim)
+            self.v_project = True
+        else:
+            self.v_project = False
 
     def forward(self, k, v):
         k = self.k_layer_norm(self.dropout_module(self.k_fc2(self.dropout_module(self.k_activation_fn(self.k_fc1(k))))))
-        v = self.v_layer_norm(self.dropout_module(self.v_fc2(self.dropout_module(self.v_activation_fn(self.v_fc1(v))))))
+        if self.v_project:
+            v = self.v_layer_norm(self.dropout_module(self.v_fc2(self.dropout_module(self.v_activation_fn(self.v_fc1(v))))))
         return k, v
 
 
