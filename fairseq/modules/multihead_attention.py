@@ -109,7 +109,8 @@ class MultiheadAttention(nn.Module):
                 nn.init.xavier_uniform_(self.v_proj.weight)
             nn.init.xavier_uniform_(self.q_proj.weight)
 
-        nn.init.xavier_uniform_(self.out_proj.weight)
+        if self.out_proj is not None:
+            nn.init.xavier_uniform_(self.out_proj.weight)
         if self.out_proj.bias is not None:
             nn.init.constant_(self.out_proj.bias, 0.)
         if self.bias_k is not None:
