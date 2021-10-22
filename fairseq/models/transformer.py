@@ -198,6 +198,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         parser.add_argument('--plug-in-v-project', action='store_true', default=False)
         parser.add_argument('--plug-in-k-project', action='store_true', default=False)
         parser.add_argument('--aggregator-v-project', action='store_true', default=False)
+        parser.add_argument('--plug-in-mid-dim', type=int, metavar='D', default=512)
         # fmt: on
 
     @classmethod

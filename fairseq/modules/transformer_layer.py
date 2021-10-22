@@ -185,9 +185,10 @@ class Target_Plug_In_Layer_Type2(nn.Module):
     def __init__(self, args, my_dim, head_num, bias=True):
         super().__init__()
         self.dropout_module = FairseqDropout(args.kv_projection_dropout, module_name=self.__class__.__name__)
+        self.mid_dim = args.plug_in_mid_dim
         if args.plug_in_k_project:
-            self.k_fc1 = nn.Linear(my_dim, my_dim, bias=bias)
-            self.k_fc2 = nn.Linear(my_dim, my_dim, bias=bias)
+            self.k_fc1 = nn.Linear(my_dim, self.mid_dim, bias=bias)
+            self.k_fc2 = nn.Linear(self.mid_dim, my_dim, bias=bias)
             nn.init.xavier_uniform_(self.k_fc1.weight, gain=1 / math.sqrt(2))
             nn.init.xavier_uniform_(self.k_fc2.weight, gain=1 / math.sqrt(2))
             self.k_activation_fn = utils.get_activation_fn('gelu')
@@ -196,8 +197,8 @@ class Target_Plug_In_Layer_Type2(nn.Module):
         else:
             self.k_project = False
         if args.plug_in_v_project:
-            self.v_fc1 = nn.Linear(my_dim, my_dim, bias=bias)
-            self.v_fc2 = nn.Linear(my_dim, my_dim, bias=bias)
+            self.v_fc1 = nn.Linear(my_dim, self.mid_dim, bias=bias)
+            self.v_fc2 = nn.Linear(self.mid_dim, my_dim, bias=bias)
             nn.init.xavier_uniform_(self.v_fc1.weight, gain=1 / math.sqrt(2))
             nn.init.xavier_uniform_(self.v_fc2.weight, gain=1 / math.sqrt(2))
             self.v_activation_fn = utils.get_activation_fn('gelu')
@@ -218,9 +219,10 @@ class Target_Plug_In_Layer_Type3(nn.Module):
     def __init__(self, args, my_dim, head_num, bias=True):
         super().__init__()
         self.dropout_module = FairseqDropout(args.kv_projection_dropout, module_name=self.__class__.__name__)
+        self.mid_dim = args.plug_in_mid_dim
         if args.plug_in_k_project:
-            self.k_fc1 = nn.Linear(my_dim, my_dim, bias=bias)
-            self.k_fc2 = nn.Linear(my_dim, my_dim, bias=bias)
+            self.k_fc1 = nn.Linear(my_dim, self.mid_dim, bias=bias)
+            self.k_fc2 = nn.Linear(self.mid_dim, my_dim, bias=bias)
             nn.init.xavier_uniform_(self.k_fc1.weight, gain=1 / math.sqrt(2))
             nn.init.xavier_uniform_(self.k_fc2.weight, gain=1 / math.sqrt(2))
             self.k_activation_fn = utils.get_activation_fn('gelu')
@@ -229,8 +231,8 @@ class Target_Plug_In_Layer_Type3(nn.Module):
         else:
             self.k_project = False
         if args.plug_in_v_project:
-            self.v_fc1 = nn.Linear(my_dim, my_dim, bias=bias)
-            self.v_fc2 = nn.Linear(my_dim, my_dim, bias=bias)
+            self.v_fc1 = nn.Linear(my_dim, self.mid_dim, bias=bias)
+            self.v_fc2 = nn.Linear(self.mid_dim, my_dim, bias=bias)
             nn.init.xavier_uniform_(self.v_fc1.weight, gain=1 / math.sqrt(2))
             nn.init.xavier_uniform_(self.v_fc2.weight, gain=1 / math.sqrt(2))
             self.v_activation_fn = utils.get_activation_fn('gelu')
