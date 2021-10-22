@@ -242,7 +242,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
                 args, tgt_dict, args.decoder_embed_dim, args.decoder_embed_path
             )
 
-        if args.target_kv_table:
+        if args.target_kv_table and args.plug_in_component != 'none':
             kv_aggregator = cls.build_kv_aggregator(
                 args, args.encoder_embed_dim
             )
