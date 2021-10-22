@@ -158,9 +158,13 @@ class Target_Plug_In_Layer_Type1(nn.Module):
     def __init__(self, args, my_dim, head_num, bias=True):
         super().__init__()
         self.dropout_module = FairseqDropout(args.kv_projection_dropout, module_name=self.__class__.__name__)
-        self.k_proj = nn.Linear(my_dim, my_dim, bias=bias)
-        nn.init.xavier_uniform_(self.k_proj.weight, gain=1 / math.sqrt(2))
-        self.k_layer_norm = LayerNorm(my_dim)
+        if args.plug_in_k_project:
+            self.k_proj = nn.Linear(my_dim, my_dim, bias=bias)
+            nn.init.xavier_uniform_(self.k_proj.weight, gain=1 / math.sqrt(2))
+            self.k_layer_norm = LayerNorm(my_dim)
+            self.k_project = True
+        else:
+            self.k_project = False
         if args.plug_in_v_project:
             self.v_proj = nn.Linear(my_dim, my_dim, bias=bias)
             nn.init.xavier_uniform_(self.v_proj.weight, gain=1 / math.sqrt(2))
@@ -170,7 +174,8 @@ class Target_Plug_In_Layer_Type1(nn.Module):
             self.v_project = False
 
     def forward(self, k, v):
-        k = self.k_layer_norm(self.dropout_module(self.k_proj(k)))
+        if self.k_project
+            k = self.k_layer_norm(self.dropout_module(self.k_proj(k)))
         if self.v_project:
             v = self.v_layer_norm(self.dropout_module(self.v_proj(v)))
         return k, v
@@ -180,12 +185,16 @@ class Target_Plug_In_Layer_Type2(nn.Module):
     def __init__(self, args, my_dim, head_num, bias=True):
         super().__init__()
         self.dropout_module = FairseqDropout(args.kv_projection_dropout, module_name=self.__class__.__name__)
-        self.k_fc1 = nn.Linear(my_dim, my_dim, bias=bias)
-        self.k_fc2 = nn.Linear(my_dim, my_dim, bias=bias)
-        nn.init.xavier_uniform_(self.k_fc1.weight, gain=1 / math.sqrt(2))
-        nn.init.xavier_uniform_(self.k_fc2.weight, gain=1 / math.sqrt(2))
-        self.k_activation_fn = utils.get_activation_fn('tanh')
-        self.k_layer_norm = LayerNorm(my_dim)
+        if args.plug_in_k_project:
+            self.k_fc1 = nn.Linear(my_dim, my_dim, bias=bias)
+            self.k_fc2 = nn.Linear(my_dim, my_dim, bias=bias)
+            nn.init.xavier_uniform_(self.k_fc1.weight, gain=1 / math.sqrt(2))
+            nn.init.xavier_uniform_(self.k_fc2.weight, gain=1 / math.sqrt(2))
+            self.k_activation_fn = utils.get_activation_fn('tanh')
+            self.k_layer_norm = LayerNorm(my_dim)
+            self.k_project = True
+        else:
+            self.k_project = False
         if args.plug_in_v_project:
             self.v_fc1 = nn.Linear(my_dim, my_dim, bias=bias)
             self.v_fc2 = nn.Linear(my_dim, my_dim, bias=bias)
@@ -198,7 +207,8 @@ class Target_Plug_In_Layer_Type2(nn.Module):
             self.v_project = False
 
     def forward(self, k, v):
-        k = self.k_layer_norm(self.dropout_module(self.k_fc2(self.dropout_module(self.k_activation_fn(self.k_fc1(k))))))
+        if self.k_project
+            k = self.k_layer_norm(self.dropout_module(self.k_fc2(self.dropout_module(self.k_activation_fn(self.k_fc1(k))))))
         if self.v_project:
             v = self.v_layer_norm(self.dropout_module(self.v_fc2(self.dropout_module(self.v_activation_fn(self.v_fc1(v))))))
         return k, v
@@ -208,12 +218,16 @@ class Target_Plug_In_Layer_Type3(nn.Module):
     def __init__(self, args, my_dim, head_num, bias=True):
         super().__init__()
         self.dropout_module = FairseqDropout(args.kv_projection_dropout, module_name=self.__class__.__name__)
-        self.k_fc1 = nn.Linear(my_dim, 2 * my_dim, bias=bias)
-        self.k_fc2 = nn.Linear(2 * my_dim, my_dim, bias=bias)
-        nn.init.xavier_uniform_(self.k_fc1.weight, gain=1 / math.sqrt(2))
-        nn.init.xavier_uniform_(self.k_fc2.weight, gain=1 / math.sqrt(2))
-        self.k_activation_fn = utils.get_activation_fn('tanh')
-        self.k_layer_norm = LayerNorm(my_dim)
+        if args.plug_in_k_project:
+            self.k_fc1 = nn.Linear(my_dim, 2 * my_dim, bias=bias)
+            self.k_fc2 = nn.Linear(2 * my_dim, my_dim, bias=bias)
+            nn.init.xavier_uniform_(self.k_fc1.weight, gain=1 / math.sqrt(2))
+            nn.init.xavier_uniform_(self.k_fc2.weight, gain=1 / math.sqrt(2))
+            self.k_activation_fn = utils.get_activation_fn('tanh')
+            self.k_layer_norm = LayerNorm(my_dim)
+            self.k_project = True
+        else:
+            self.k_project = False
         if args.plug_in_v_project:
             self.v_fc1 = nn.Linear(my_dim, 2 * my_dim, bias=bias)
             self.v_fc2 = nn.Linear(2 * my_dim, my_dim, bias=bias)
@@ -226,7 +240,8 @@ class Target_Plug_In_Layer_Type3(nn.Module):
             self.v_project = False
 
     def forward(self, k, v):
-        k = self.k_layer_norm(self.dropout_module(self.k_fc2(self.dropout_module(self.k_activation_fn(self.k_fc1(k))))))
+        if self.k_project
+            k = self.k_layer_norm(self.dropout_module(self.k_fc2(self.dropout_module(self.k_activation_fn(self.k_fc1(k))))))
         if self.v_project:
             v = self.v_layer_norm(self.dropout_module(self.v_fc2(self.dropout_module(self.v_activation_fn(self.v_fc1(v))))))
         return k, v
