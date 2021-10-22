@@ -96,6 +96,7 @@ class TransformerEncoderLayer(nn.Module):
         past_key: Optional[Tensor] = None,
         past_value: Optional[Tensor] = None,
         past_key_padding_mask: Optional[torch.Tensor] = None,
+        past_kv_forward: str = 'both',
     ):
         """
         Args:
@@ -132,6 +133,7 @@ class TransformerEncoderLayer(nn.Module):
             past_key=past_key,
             past_value=past_value,
             past_key_padding_mask=past_key_padding_mask,
+            past_kv_forward=past_kv_forward,
         )
         x = self.dropout_module(x)
         x = residual + x
@@ -159,18 +161,13 @@ class Target_Plug_In_Layer_Type1(nn.Module):
         self.k_proj = nn.Linear(my_dim, my_dim, bias=bias)
         nn.init.xavier_uniform_(self.k_proj.weight, gain=1 / math.sqrt(2))
         self.k_layer_norm = LayerNorm(my_dim)
-        if args.plug_in_project_v:
-            self.v_proj = nn.Linear(my_dim, my_dim, bias=bias)
-            nn.init.xavier_uniform_(self.v_proj.weight, gain=1 / math.sqrt(2))
-            self.v_layer_norm = LayerNorm(my_dim)
-            self.project_v = True
-        else:
-            self.project_v = False
+        self.v_proj = nn.Linear(my_dim, my_dim, bias=bias)
+        nn.init.xavier_uniform_(self.v_proj.weight, gain=1 / math.sqrt(2))
+        self.v_layer_norm = LayerNorm(my_dim)
 
     def forward(self, k, v):
         k = self.k_layer_norm(self.dropout_module(self.k_proj(k)))
-        if self.project_v:
-            v = self.v_layer_norm(self.dropout_module(self.v_proj(v)))
+        v = self.v_layer_norm(self.dropout_module(self.v_proj(v)))
         return k, v
 
 
@@ -184,21 +181,16 @@ class Target_Plug_In_Layer_Type2(nn.Module):
         nn.init.xavier_uniform_(self.k_fc2.weight, gain=1 / math.sqrt(2))
         self.k_activation_fn = utils.get_activation_fn('tanh')
         self.k_layer_norm = LayerNorm(my_dim)
-        if args.plug_in_project_v:
-            self.v_fc1 = nn.Linear(my_dim, my_dim, bias=bias)
-            self.v_fc2 = nn.Linear(my_dim, my_dim, bias=bias)
-            nn.init.xavier_uniform_(self.v_fc1.weight, gain=1 / math.sqrt(2))
-            nn.init.xavier_uniform_(self.v_fc2.weight, gain=1 / math.sqrt(2))
-            self.v_activation_fn = utils.get_activation_fn('tanh')
-            self.v_layer_norm = LayerNorm(my_dim)
-            self.project_v = True
-        else:
-            self.project_v = False
+        self.v_fc1 = nn.Linear(my_dim, my_dim, bias=bias)
+        self.v_fc2 = nn.Linear(my_dim, my_dim, bias=bias)
+        nn.init.xavier_uniform_(self.v_fc1.weight, gain=1 / math.sqrt(2))
+        nn.init.xavier_uniform_(self.v_fc2.weight, gain=1 / math.sqrt(2))
+        self.v_activation_fn = utils.get_activation_fn('tanh')
+        self.v_layer_norm = LayerNorm(my_dim)
 
     def forward(self, k, v):
         k = self.k_layer_norm(self.dropout_module(self.k_fc2(self.dropout_module(self.k_activation_fn(self.k_fc1(k))))))
-        if self.project_v:
-            v = self.v_layer_norm(self.dropout_module(self.v_fc2(self.dropout_module(self.v_activation_fn(self.v_fc1(v))))))
+        v = self.v_layer_norm(self.dropout_module(self.v_fc2(self.dropout_module(self.v_activation_fn(self.v_fc1(v))))))
         return k, v
 
 
@@ -212,21 +204,16 @@ class Target_Plug_In_Layer_Type3(nn.Module):
         nn.init.xavier_uniform_(self.k_fc2.weight, gain=1 / math.sqrt(2))
         self.k_activation_fn = utils.get_activation_fn('tanh')
         self.k_layer_norm = LayerNorm(my_dim)
-        if args.plug_in_project_v:
-            self.v_fc1 = nn.Linear(my_dim, 2 * my_dim, bias=bias)
-            self.v_fc2 = nn.Linear(2 * my_dim, my_dim, bias=bias)
-            nn.init.xavier_uniform_(self.v_fc1.weight, gain=1 / math.sqrt(2))
-            nn.init.xavier_uniform_(self.v_fc2.weight, gain=1 / math.sqrt(2))
-            self.v_activation_fn = utils.get_activation_fn('tanh')
-            self.v_layer_norm = LayerNorm(my_dim)
-            self.project_v = True
-        else:
-            self.project_v = False
+        self.v_fc1 = nn.Linear(my_dim, 2 * my_dim, bias=bias)
+        self.v_fc2 = nn.Linear(2 * my_dim, my_dim, bias=bias)
+        nn.init.xavier_uniform_(self.v_fc1.weight, gain=1 / math.sqrt(2))
+        nn.init.xavier_uniform_(self.v_fc2.weight, gain=1 / math.sqrt(2))
+        self.v_activation_fn = utils.get_activation_fn('tanh')
+        self.v_layer_norm = LayerNorm(my_dim)
 
     def forward(self, k, v):
         k = self.k_layer_norm(self.dropout_module(self.k_fc2(self.dropout_module(self.k_activation_fn(self.k_fc1(k))))))
-        if self.project_v:
-            v = self.v_layer_norm(self.dropout_module(self.v_fc2(self.dropout_module(self.v_activation_fn(self.v_fc1(v))))))
+        v = self.v_layer_norm(self.dropout_module(self.v_fc2(self.dropout_module(self.v_activation_fn(self.v_fc1(v))))))
         return k, v
 
 
@@ -390,6 +377,7 @@ class TransformerDecoderLayer(nn.Module):
         past_key: Optional[Tensor] = None,
         past_value: Optional[Tensor] = None,
         past_key_padding_mask: Optional[torch.Tensor] = None,
+        past_kv_forward: str = 'both',
     ):
         """
         Args:
@@ -488,6 +476,7 @@ class TransformerDecoderLayer(nn.Module):
                 past_key=past_key,
                 past_value=past_value,
                 past_key_padding_mask=past_key_padding_mask,
+                past_kv_forward=past_kv_forward,
             )
             x = self.dropout_module(x)
             x = residual + x

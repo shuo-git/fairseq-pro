@@ -191,8 +191,8 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='type1 or type2 or type3 or ...')
         parser.add_argument('--plug-in-forward', default='bottom',
                             help='bottom or pipe')
-        parser.add_argument('--plug-in-project-v', action='store_true', default=False)
-        parser.add_argument('--aggregator-project-v', action='store_true', default=False)
+        parser.add_argument('--plug-in-project', type=str, default='both',
+                            help='both or key or value or none')
         # fmt: on
 
     @classmethod
@@ -260,7 +260,6 @@ class TransformerModel(FairseqEncoderDecoderModel):
             vdim=getattr(args, "encoder_embed_dim", None),
             dropout=args.kv_attention_dropout,
             encoder_decoder_attention=True,
-            kv_aggregator=(not args.aggregator_project_v),
         )
 
     @classmethod
@@ -494,7 +493,6 @@ class TransformerEncoder(FairseqEncoder):
                 key=tgt_v,
                 value=tgt_v,
                 key_padding_mask=tgt_v_padding_mask,
-                kv_aggregator=(not self.args.aggregator_project_v),
             ) # T(k) x 3B x V
             tgt_k = tgt_k.transpose(0, 1).view(bsz, -1, embed_dim).transpose(0, 1) # 3T(k) x B x C
             tgt_v = tgt_v.transpose(0, 1).contiguous().view(bsz, -1, embed_dim).transpose(0, 1) # 3T(k) x B x C
@@ -532,6 +530,7 @@ class TransformerEncoder(FairseqEncoder):
                     past_key=temp_tgt_k,
                     past_value=temp_tgt_v,
                     past_key_padding_mask=tgt_k_padding_mask,
+                    past_kv_forward=self.args.plug_in_project,
                 )
             if return_all_hiddens:
                 assert encoder_states is not None
@@ -1005,6 +1004,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                 past_key=temp_tgt_k,
                 past_value=temp_tgt_v,
                 past_key_padding_mask=tgt_k_padding_mask,
+                past_kv_forward=self.args.plug_in_project,
             )
             inner_states.append(x)
             if layer_attn is not None and idx == alignment_layer:

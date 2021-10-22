@@ -38,7 +38,6 @@ class MultiheadAttention(nn.Module):
         encoder_decoder_attention=False,
         q_noise=0.0,
         qn_block_size=8,
-        kv_aggregator=False,
     ):
         super().__init__()
         self.embed_dim = embed_dim
@@ -65,16 +64,10 @@ class MultiheadAttention(nn.Module):
         )
 
         self.k_proj = quant_noise(nn.Linear(self.kdim, embed_dim, bias=bias), q_noise, qn_block_size)
-        if kv_aggregator:
-            self.v_proj = None
-        else:
-            self.v_proj = quant_noise(nn.Linear(self.vdim, embed_dim, bias=bias), q_noise, qn_block_size)
+        self.v_proj = quant_noise(nn.Linear(self.vdim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.q_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
-        if kv_aggregator:
-            self.out_proj = None
-        else:
-            self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+        self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
         if add_bias_kv:
             self.bias_k = Parameter(torch.Tensor(1, 1, embed_dim))
@@ -133,7 +126,7 @@ class MultiheadAttention(nn.Module):
         past_key: Optional[Tensor] = None,
         past_value: Optional[Tensor] = None,
         past_key_padding_mask: Optional[torch.Tensor] = None,
-        kv_aggregator: bool = False,
+        past_kv_forward: str = 'both',
     ) -> Tuple[Tensor, Optional[Tensor]]:
         """Input shape: Time x Batch x Channel
 
@@ -222,10 +215,7 @@ class MultiheadAttention(nn.Module):
                 k = v = None
             else:
                 k = self.k_proj(key)
-                if kv_aggregator:
-                    v = key
-                else:
-                    v = self.v_proj(key)
+                v = self.v_proj(key)
 
         else:
             assert key is not None and value is not None
@@ -235,8 +225,13 @@ class MultiheadAttention(nn.Module):
         q *= self.scaling
 
         if attend_kv_table:
-            past_key = self.k_proj(past_key)
-            # past_value = self.v_proj(past_value)
+            if past_kv_forward == 'both':
+                past_key = self.k_proj(past_key)
+                past_value = self.v_proj(past_value)
+            elif past_kv_forward == 'key':
+                past_key = self.k_proj(past_key)
+            elif past_kv_forward == 'value':
+                past_value = self.v_proj(past_value)
 
         # if self.bias_k is not None:
         #     assert self.bias_v is not None
@@ -421,8 +416,7 @@ class MultiheadAttention(nn.Module):
         # else:
         #     attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
         attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
-        if not kv_aggregator:
-            attn = self.out_proj(attn)
+        attn = self.out_proj(attn)
         attn_weights: Optional[Tensor] = None
         if need_weights:
             attn_weights = attn_weights_float.view(
