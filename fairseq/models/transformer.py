@@ -1025,7 +1025,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
 
         # T x B x C -> B x T x C
         x = x.transpose(0, 1)
-        if attend_kv_table:
+        if attend_kv_table and self.args.plug_in_component != 'none':
             tgt_k = tgt_k.transpose(0, 1)
             tgt_v = tgt_v.transpose(0, 1)
 
