@@ -260,6 +260,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
             vdim=getattr(args, "encoder_embed_dim", None),
             dropout=args.kv_attention_dropout,
             encoder_decoder_attention=True,
+            kv_aggregator=(not args.aggregator_project_v),
         )
 
     @classmethod
