@@ -216,6 +216,8 @@ class MultiheadAttention(nn.Module):
             k = self.k_proj(query)
             if self.v_proj is not None:
                 v = self.v_proj(query)
+            else:
+                v = query
         elif self.encoder_decoder_attention:
             # encoder-decoder attention
             q = self.q_proj(query)
@@ -226,6 +228,8 @@ class MultiheadAttention(nn.Module):
                 k = self.k_proj(key)
                 if self.v_proj is not None:
                     v = self.v_proj(key)
+                else:
+                    v = key
 
         else:
             assert key is not None and value is not None
@@ -233,6 +237,8 @@ class MultiheadAttention(nn.Module):
             k = self.k_proj(key)
             if self.v_proj is not None:
                 v = self.v_proj(value)
+            else:
+                v = value
         q *= self.scaling
 
         if attend_kv_table:
