@@ -194,7 +194,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         parser.add_argument('--plug-in-project', type=str, default='both',
                             help='both or key or value or none')
         parser.add_argument('--plug-in-component', type=str, default='encdec',
-                            help='encdec or enc or dec')
+                            help='encdec or enc or dec or none')
         # fmt: on
 
     @classmethod
