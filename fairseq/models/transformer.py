@@ -967,9 +967,9 @@ class TransformerDecoder(FairseqIncrementalDecoder):
 
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
-        if attend_kv_table:
-            tgt_k = tgt_k.transpose(0, 1)
-            tgt_v = tgt_v.transpose(0, 1)
+        # if attend_kv_table:
+        #     tgt_k = tgt_k.transpose(0, 1)
+        #     tgt_v = tgt_v.transpose(0, 1)
 
         self_attn_padding_mask: Optional[Tensor] = None
         if self.cross_self_attention or prev_output_tokens.eq(self.padding_idx).any():
