@@ -239,6 +239,7 @@ class TranslationTask(LegacyFairseqTask):
         parser.add_argument('--source-word-int-label', action='store_true', default='False')
         parser.add_argument('--target-word-int-label', action='store_true', default='False')
         parser.add_argument('--target-key-sep', type=int, default=-1)
+        parser.add_argument('--no-shuf-train', action='store_true', default='False')
         # fmt: on
 
     def __init__(self, args, src_dict, tgt_dict):
@@ -302,7 +303,7 @@ class TranslationTask(LegacyFairseqTask):
             load_alignments=self.args.load_alignments,
             truncate_source=self.args.truncate_source,
             num_buckets=self.args.num_batch_buckets,
-            shuffle=(split != 'test'),
+            shuffle=(split != 'test' and not self.args.no_shuf_train),
             target_word_int_label=self.args.target_word_int_label if split == 'train' else False,
             source_word_int_label=self.args.source_word_int_label,
             target_key_sep=self.args.target_key_sep,
