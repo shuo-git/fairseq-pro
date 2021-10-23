@@ -199,6 +199,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         parser.add_argument('--plug-in-k-project', action='store_true', default=False)
         parser.add_argument('--aggregator-v-project', action='store_true', default=False)
         parser.add_argument('--plug-in-mid-dim', type=int, metavar='D', default=512)
+        parser.add_argument('--no-plug-in-pointer', action='store_true', default=False)
         # fmt: on
 
     @classmethod
@@ -737,7 +738,8 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                         for _ in range(args.decoder_layers)
                     ]
                 )
-            self.plug_ins.append(self.build_softmax_plug_in(args, embed_dim, args.decoder_attention_heads))
+            if not self.args.no_plug_in_pointer:
+                self.plug_ins.append(self.build_softmax_plug_in(args, embed_dim, args.decoder_attention_heads))
         else:
             self.plug_ins = None
 
@@ -1041,8 +1043,9 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         epsilon = 1e-12
         logits = self.output_layer(x)
         model_prob = utils.softmax(logits, dim=-1) + epsilon # B x T x V
+        rank_reg = 0.
 
-        if attend_kv_table:
+        if attend_kv_table and not self.args.no_plug_in_pointer:
             # Decoding Rule-1 by Shuo
             if incremental_state is not None:
                 saved_state = self.get_incremental_state(incremental_state, "plug_in_state")
@@ -1068,7 +1071,6 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             # rank_reg = torch.bmm(norm_cos_sim, norm_cos_sim.transpose(1, 2))
             # rank_reg.masked_fill_(torch.eye(seq_len).to(rank_reg).to(bool).unsqueeze(0), 0.) # B x T x T
             # rank_reg = rank_reg.sum() # lower is better
-            rank_reg = 0.
 
             plug_in_sim = cos_sim.max(dim=-1, keepdim=True).values # B x T x 1
             # plug_in_sim = torch.max(torch.ones_like(plug_in_sim) * epsilon, plug_in_sim) # no negative plug-in-sim
