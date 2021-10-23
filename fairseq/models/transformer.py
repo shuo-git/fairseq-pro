@@ -386,11 +386,11 @@ class TransformerEncoder(FairseqEncoder):
         self.kv_aggregator = kv_aggregator
         # Build the Plug-In network
         if self.args.target_kv_table and 'enc' in self.args.plug_in_component:
-            self.plug_ins = nn.ModuleList([])
+            self.plug_ins = nn.ModuleList([]) # args.encoder_layers
             self.plug_ins.extend(
                 [
                     build_plug_in_layer(args, embed_dim, args.encoder_attention_heads)
-                    for _ in range(args.encoder_layers)
+                    for _ in range(1)
                 ]
             )
         else:
@@ -526,9 +526,9 @@ class TransformerEncoder(FairseqEncoder):
         for idx, layer in enumerate(self.layers):
             if attend_kv_table and 'enc' in self.args.plug_in_component:
                 if self.args.plug_in_forward == 'bottom':
-                    temp_tgt_k, temp_tgt_v = self.plug_ins[idx](tgt_k, tgt_v)
+                    temp_tgt_k, temp_tgt_v = self.plug_ins[0](tgt_k, tgt_v)
                 else:
-                    temp_tgt_k, temp_tgt_v = self.plug_ins[idx](temp_tgt_k, temp_tgt_v)
+                    temp_tgt_k, temp_tgt_v = self.plug_ins[0](temp_tgt_k, temp_tgt_v)
             else:
                 temp_tgt_k = temp_tgt_v = None
             x = layer(
@@ -730,11 +730,11 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         # Build the Plug-In network
         if self.args.target_kv_table:
             self.plug_ins = nn.ModuleList([])
-            if 'dec' in self.args.plug_in_component:
+            if 'dec' in self.args.plug_in_component: # args.decoder_layers
                 self.plug_ins.extend(
                     [
                         build_plug_in_layer(args, embed_dim, args.decoder_attention_heads)
-                        for _ in range(args.decoder_layers)
+                        for _ in range(1)
                     ]
                 )
             self.plug_ins.append(self.build_softmax_plug_in(args, embed_dim, args.decoder_attention_heads))
@@ -986,9 +986,9 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         for idx, layer in enumerate(self.layers):
             if attend_kv_table and 'dec' in self.args.plug_in_component:
                 if self.args.plug_in_forward == 'bottom':
-                    temp_tgt_k, temp_tgt_v = self.plug_ins[idx](tgt_k, tgt_v)
+                    temp_tgt_k, temp_tgt_v = self.plug_ins[0](tgt_k, tgt_v)
                 else:
-                    temp_tgt_k, temp_tgt_v = self.plug_ins[idx](temp_tgt_k, temp_tgt_v)
+                    temp_tgt_k, temp_tgt_v = self.plug_ins[0](temp_tgt_k, temp_tgt_v)
             else:
                 temp_tgt_k = temp_tgt_v = None
 
