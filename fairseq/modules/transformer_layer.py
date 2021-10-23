@@ -409,7 +409,7 @@ class TransformerDecoderLayer(nn.Module):
         past_key: Optional[Tensor] = None,
         past_value: Optional[Tensor] = None,
         past_key_padding_mask: Optional[torch.Tensor] = None,
-        past_kv_forward: str = 'both',
+        past_kv_forward: str = 'none',
     ):
         """
         Args:
@@ -475,6 +475,10 @@ class TransformerDecoderLayer(nn.Module):
             incremental_state=incremental_state,
             need_weights=False,
             attn_mask=self_attn_mask,
+            past_key=past_key,
+            past_value=past_value,
+            past_key_padding_mask=past_key_padding_mask,
+            past_kv_forward=past_kv_forward,
         )
         x = self.dropout_module(x)
         x = residual + x
