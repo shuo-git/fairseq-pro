@@ -200,6 +200,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         parser.add_argument('--aggregator-v-project', action='store_true', default=False)
         parser.add_argument('--plug-in-mid-dim', type=int, metavar='D', default=512)
         parser.add_argument('--no-plug-in-pointer', action='store_true', default=False)
+        parser.add_argument('--no-plug-in-pointer-gate', action='store_true', default=False)
         # fmt: on
 
     @classmethod
@@ -738,7 +739,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                         for _ in range(args.decoder_layers)
                     ]
                 )
-            if not self.args.no_plug_in_pointer:
+            if not self.args.no_plug_in_pointer and not self.args.no_plug_in_pointer_gate:
                 self.plug_ins.append(self.build_softmax_plug_in(args, embed_dim, args.decoder_attention_heads))
         else:
             self.plug_ins = None
@@ -1077,13 +1078,16 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             plug_in_v_idx = cos_sim.argmax(dim=-1) # B x T
             plug_in_v = tgt_v_toks.gather(index=plug_in_v_idx, dim=-1).unsqueeze(-1) # B x T x 1
             plug_in_prob = torch.zeros_like(model_prob).scatter(dim=-1, index=plug_in_v, src=plug_in_sim) # B x T x V
-            plug_in_gate = self.plug_ins[-1](x.transpose(0, 1), last_tgt_v.transpose(0, 1), tgt_v_padding_mask).transpose(0, 1) # B x T x 1
+            
+            if not self.args.no_plug_in_pointer_gate:
+                plug_in_gate = self.plug_ins[-1](x.transpose(0, 1), last_tgt_v.transpose(0, 1), tgt_v_padding_mask).transpose(0, 1) # B x T x 1
 
-            # Decoding Rule-2 by Shuo
-            # if incremental_state is not None:
-            #     plug_in_gate *= (1.0 * math.exp(0.02 * current_time_step))
+                # Decoding Rule-2 by Shuo
+                # if incremental_state is not None:
+                #     plug_in_gate *= (1.0 * math.exp(0.02 * current_time_step))
 
-            model_prob += plug_in_prob * plug_in_gate
+                model_prob += plug_in_prob * plug_in_gate
+            
             model_prob = torch.min(torch.ones_like(model_prob), model_prob) # < 1
             model_prob = torch.max(torch.ones_like(model_prob) * epsilon, model_prob) # > 0
 
