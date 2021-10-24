@@ -1043,7 +1043,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
 
         epsilon = 1e-12
         logits = self.output_layer(x)
-        model_prob = utils.softmax(logits, dim=-1) + epsilon # B x T x V
+        model_prob = utils.softmax(logits, dim=-1) + epsilon # B x T x V, fp32
         rank_reg = 0.
 
         if attend_kv_table and not self.args.no_plug_in_pointer:
@@ -1062,7 +1062,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
 
             tgt_v_padding_mask = tgt_v_toks.eq(self.padding_idx) # B x T(v)
             last_tgt_v = self.embed_scale * self.embed_tokens(tgt_v_toks) * (~tgt_v_padding_mask).unsqueeze(-1) # B x T(v) x C
-            cos_sim = _cosine_similarity(x, last_tgt_v, epsilon) # B x T x T(v), need to be regularized
+            cos_sim = _cosine_similarity(x.float(), last_tgt_v.float(), epsilon) # B x T x T(v), need to be regularized
             cos_sim.masked_fill_(tgt_v_padding_mask.unsqueeze(1), 0.)
             if self_attn_padding_mask is not None:
                 cos_sim.masked_fill_(self_attn_padding_mask.unsqueeze(-1), 0.)
@@ -1081,7 +1081,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             
             if not self.args.no_plug_in_pointer_gate:
                 plug_in_gate = self.plug_ins[-1](x.transpose(0, 1), last_tgt_v.transpose(0, 1), tgt_v_padding_mask).transpose(0, 1) # B x T x 1
-
+                plug_in_gate = plug_in_gate.float()
                 # Decoding Rule-2 by Shuo
                 # if incremental_state is not None:
                 #     plug_in_gate *= (1.0 * math.exp(0.02 * current_time_step))
