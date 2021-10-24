@@ -252,7 +252,6 @@ class Target_Plug_In_Layer_Type3(nn.Module):
 class Softmax_Plug_In_Gate(nn.Module):
     def __init__(self, args, my_dim, head_num, bias=True):
         super().__init__()
-        self.dropout_module = FairseqDropout(args.kv_projection_dropout, module_name=self.__class__.__name__)
         self.attention = self.build_attention(my_dim, head_num,
                 dropout=args.kv_attention_dropout,
             )
@@ -275,7 +274,7 @@ class Softmax_Plug_In_Gate(nn.Module):
                 key_padding_mask=key_padding_mask
             )
         aggregated_v = self.c_layer_norm(aggregated_v)
-        h_state = self.h_layer_norm(self.dropout_module(self.h_proj(h_state)))
+        h_state = self.h_layer_norm(self.h_proj(h_state))
         cat_v_h = self.activation1(torch.cat([aggregated_v, h_state], dim=-1)) # T x B x (2V)
         gate = self.activation2(self.vector(cat_v_h)) # T x B x 1
         return gate
