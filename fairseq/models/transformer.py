@@ -197,6 +197,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='encdec or enc or dec or none')
         parser.add_argument('--plug-in-v-project', action='store_true', default=False)
         parser.add_argument('--plug-in-k-project', action='store_true', default=False)
+        parser.add_argument('--plug-in-dec-self-attn', action='store_true', default=False)
         parser.add_argument('--aggregator-v-project', action='store_true', default=False)
         parser.add_argument('--plug-in-mid-dim', type=int, metavar='D', default=512)
         parser.add_argument('--no-plug-in-pointer', action='store_true', default=False)

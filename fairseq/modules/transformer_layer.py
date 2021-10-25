@@ -311,6 +311,8 @@ class TransformerDecoderLayer(nn.Module):
         self, args, no_encoder_attn=False, add_bias_kv=False, add_zero_attn=False
     ):
         super().__init__()
+        self.plug_in_dec_self_attn = args.plug_in_dec_self_attn
+
         self.embed_dim = args.decoder_embed_dim
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
         self.quant_noise = getattr(args, "quant_noise_pq", 0)
@@ -467,15 +469,30 @@ class TransformerDecoderLayer(nn.Module):
         #     y = x
         y = x
 
-        x, attn = self.self_attn(
-            query=x,
-            key=y,
-            value=y,
-            key_padding_mask=self_attn_padding_mask,
-            incremental_state=incremental_state,
-            need_weights=False,
-            attn_mask=self_attn_mask,
-        )
+        if self.plug_in_dec_self_attn:
+            x, attn = self.self_attn(
+                query=x,
+                key=y,
+                value=y,
+                key_padding_mask=self_attn_padding_mask,
+                incremental_state=incremental_state,
+                need_weights=False,
+                attn_mask=self_attn_mask,
+                past_key=past_key,
+                past_value=past_value,
+                past_key_padding_mask=past_key_padding_mask,
+                past_kv_forward=past_kv_forward,
+            )
+        else:
+            x, attn = self.self_attn(
+                query=x,
+                key=y,
+                value=y,
+                key_padding_mask=self_attn_padding_mask,
+                incremental_state=incremental_state,
+                need_weights=False,
+                attn_mask=self_attn_mask,
+            )
         x = self.dropout_module(x)
         x = residual + x
         if not self.normalize_before:
