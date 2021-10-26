@@ -203,6 +203,8 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='dropout probability for kv attention weights')
         parser.add_argument('--kv-projection-dropout', type=float, metavar='D', default=0.0,
                             help='dropout probability for kv projections')
+        parser.add_argument('--plug-in-enc-layers', type=str, default='0,1,2,3,4,5')
+        parser.add_argument('--plug-in-dec-layers', type=str, default='0,1,2,3,4,5')
         # fmt: on
 
     @classmethod
@@ -389,12 +391,16 @@ class TransformerEncoder(FairseqEncoder):
 
         self.kv_aggregator = kv_aggregator
         # Build the Plug-In network
+        self.plug_in_layers = [int(pl) for pl in self.args.plug_in_enc_layers.split(',')]
+        self.plug_in_layer_map = {}
+        for idx, pl in enumerate(self.plug_in_layers):
+            self.plug_in_layer_map[pl] = idx
         if self.args.target_kv_table and 'enc' in self.args.plug_in_component:
             self.plug_ins = nn.ModuleList([])
             self.plug_ins.extend(
                 [
                     build_plug_in_layer(args, embed_dim, args.encoder_attention_heads)
-                    for _ in range(args.encoder_layers)
+                    for _ in range(len(self.plug_in_layers))
                 ]
             )
         else:
@@ -528,11 +534,11 @@ class TransformerEncoder(FairseqEncoder):
             temp_tgt_k = tgt_k
             temp_tgt_v = tgt_v
         for idx, layer in enumerate(self.layers):
-            if attend_kv_table and 'enc' in self.args.plug_in_component:
+            if attend_kv_table and 'enc' in self.args.plug_in_component and idx in self.plug_in_layers:
                 if self.args.plug_in_forward == 'bottom':
-                    temp_tgt_k, temp_tgt_v = self.plug_ins[idx](tgt_k, tgt_v)
+                    temp_tgt_k, temp_tgt_v = self.plug_ins[self.plug_in_layer_map[idx]](tgt_k, tgt_v)
                 else:
-                    temp_tgt_k, temp_tgt_v = self.plug_ins[idx](temp_tgt_k, temp_tgt_v)
+                    temp_tgt_k, temp_tgt_v = self.plug_ins[self.plug_in_layer_map[idx]](temp_tgt_k, temp_tgt_v)
             else:
                 temp_tgt_k = temp_tgt_v = None
             x = layer(
@@ -732,13 +738,17 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             self.embed_languages = None
 
         # Build the Plug-In network
+        self.plug_in_layers = [int(pl) for pl in self.args.plug_in_dec_layers.split(',')]
+        self.plug_in_layer_map = {}
+        for idx, pl in enumerate(self.plug_in_layers):
+            self.plug_in_layer_map[pl] = idx
         if self.args.target_kv_table:
             self.plug_ins = nn.ModuleList([])
             if 'dec' in self.args.plug_in_component:
                 self.plug_ins.extend(
                     [
                         build_plug_in_layer(args, embed_dim, args.decoder_attention_heads)
-                        for _ in range(args.decoder_layers)
+                        for _ in range(len(self.plug_in_layers))
                     ]
                 )
             if not self.args.no_plug_in_pointer and not self.args.no_plug_in_pointer_gate:
@@ -989,11 +999,11 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         attn: Optional[Tensor] = None
         inner_states: List[Optional[Tensor]] = [x]
         for idx, layer in enumerate(self.layers):
-            if attend_kv_table and 'dec' in self.args.plug_in_component:
+            if attend_kv_table and 'dec' in self.args.plug_in_component and idx in self.plug_in_layers:
                 if self.args.plug_in_forward == 'bottom':
-                    temp_tgt_k, temp_tgt_v = self.plug_ins[idx](tgt_k, tgt_v)
+                    temp_tgt_k, temp_tgt_v = self.plug_ins[self.plug_in_layer_map[idx]](tgt_k, tgt_v)
                 else:
-                    temp_tgt_k, temp_tgt_v = self.plug_ins[idx](temp_tgt_k, temp_tgt_v)
+                    temp_tgt_k, temp_tgt_v = self.plug_ins[self.plug_in_layer_map[idx]](temp_tgt_k, temp_tgt_v)
             else:
                 temp_tgt_k = temp_tgt_v = None
 
