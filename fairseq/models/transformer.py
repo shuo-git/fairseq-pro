@@ -109,10 +109,6 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='dropout probability for attention weights')
         parser.add_argument('--activation-dropout', '--relu-dropout', type=float, metavar='D',
                             help='dropout probability after activation in FFN.')
-        parser.add_argument('--kv-attention-dropout', type=float, metavar='D', default=0.0,
-                            help='dropout probability for kv attention weights')
-        parser.add_argument('--kv-projection-dropout', type=float, metavar='D', default=0.0,
-                            help='dropout probability for kv projections')
         parser.add_argument('--encoder-embed-path', type=str, metavar='STR',
                             help='path to pre-trained encoder embedding')
         parser.add_argument('--encoder-embed-dim', type=int, metavar='N',
@@ -185,6 +181,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='if True, use word dropout on embedding layer of decoder')
         parser.add_argument('--word-dropout-prob', type=float, metavar='D', default=0,
                             help='word dropout probability')
+        # attn prompt parameters
         parser.add_argument('--target-kv-table', action='store_true', default=False)
         parser.add_argument('--encoder-out-key', action='store_true', default=False)
         parser.add_argument('--plug-in-type', default='type1',
@@ -202,6 +199,10 @@ class TransformerModel(FairseqEncoderDecoderModel):
         parser.add_argument('--plug-in-mid-dim', type=int, metavar='D', default=512)
         parser.add_argument('--no-plug-in-pointer', action='store_true', default=False)
         parser.add_argument('--no-plug-in-pointer-gate', action='store_true', default=False)
+        parser.add_argument('--kv-attention-dropout', type=float, metavar='D', default=0.0,
+                            help='dropout probability for kv attention weights')
+        parser.add_argument('--kv-projection-dropout', type=float, metavar='D', default=0.0,
+                            help='dropout probability for kv projections')
         # fmt: on
 
     @classmethod
