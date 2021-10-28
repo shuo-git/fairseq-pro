@@ -194,7 +194,7 @@ def collate(
 
 
     if constraints_tensor is not None:
-        batch["constraints"] = constraint_tensor.index_select(0, sort_order)
+        batch["constraints"] = constraints_tensor.index_select(0, sort_order)
 
     return batch
 
