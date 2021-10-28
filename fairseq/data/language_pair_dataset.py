@@ -9,6 +9,7 @@ import numpy as np
 import torch
 
 from fairseq.data import data_utils, FairseqDataset
+from fairseq.token_generation_constraints import pack_constraints
 
 
 logger = logging.getLogger(__name__)
@@ -96,6 +97,7 @@ def collate(
     target_wil = None
     target_key = None
     target_value = None
+    constraints_tensor = None
     if samples[0].get('target', None) is not None:
         target = merge(
             'target', left_pad=left_pad_target,
@@ -116,6 +118,9 @@ def collate(
 
             target_key = merge_kv('target_key', left_pad=left_pad_target)
             target_value = merge_kv('target_value', left_pad=left_pad_target)
+
+            batch_constraints = [s['valid_target_value'] for s in samples]
+            constraints_tensor = pack_constraints(batch_constraints)
 
         if samples[0].get('prev_output_tokens', None) is not None:
             prev_output_tokens = merge('prev_output_tokens', left_pad=left_pad_target)
@@ -186,6 +191,10 @@ def collate(
         for i, sample in enumerate(samples):
             constraints[i, 0:lens[i]] = samples[i].get("constraints")
         batch["constraints"] = constraints.index_select(0, sort_order)
+
+
+    if constraints_tensor is not None:
+        batch["constraints"] = constraint_tensor.index_select(0, sort_order)
 
     return batch
 
@@ -274,6 +283,7 @@ class LanguagePairDataset(FairseqDataset):
         self.constraints = constraints
         self.append_bos = append_bos
         self.eos = (eos if eos is not None else src_dict.eos())
+        self.pad = src_dict.pad() # padding index
         self.src_lang_id = src_lang_id
         self.tgt_lang_id = tgt_lang_id
         self.target_key_sep = target_key_sep
@@ -354,6 +364,15 @@ class LanguagePairDataset(FairseqDataset):
             tgt_k_item_list = [tgt_item[s:t] for s, t in zip(k_start_list, k_end_list)]
             tgt_v_item_list = [tgt_item[s:t] for s, t in zip(v_start_list, v_end_list)]
 
+            valid_tgt_k_item_list = []
+            valid_tgt_v_item_list = []
+            for idx, ti in enumerate(tgt_k_item_list):
+                if ti.eq(self.pad).all():
+                    break
+                else:
+                    valid_tgt_k_item_list.append(tgt_k_item_list[idx])
+                    valid_tgt_v_item_list.append(tgt_v_item_list[idx])
+
             tgt_item = tgt_item[sep_idx_list[-1]+1:]
 
             def _getsubidx(_x, _y):
@@ -388,6 +407,8 @@ class LanguagePairDataset(FairseqDataset):
             example['target_key'] = tgt_k_item_list
             example['target_value'] = tgt_v_item_list
             example['target_wil'] = tgt_wil_item
+            example['valid_target_key'] = valid_tgt_k_item_list
+            example['valid_target_value'] = valid_tgt_v_item_list
         return example
 
     def __len__(self):
