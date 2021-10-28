@@ -771,19 +771,19 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                 )
             if not self.args.no_plug_in_pointer and not self.args.no_plug_in_pointer_gate:
                 self.plug_ins.append(self.build_softmax_plug_in(args, embed_dim, args.decoder_attention_heads))
-            if self.args.plug_in_dec_self_attn:
-                self.self_plug_ins = nn.ModuleList([])
-                self.self_plug_ins.extend(
-                    [
-                        build_plug_in_layer(args, embed_dim, args.decoder_attention_heads)
-                        for _ in range(len(self.plug_in_layers))
-                    ]
-                )
-            else:
-                self.self_plug_ins = None
+            # if self.args.plug_in_dec_self_attn:
+            #     self.self_plug_ins = nn.ModuleList([])
+            #     self.self_plug_ins.extend(
+            #         [
+            #             build_plug_in_layer(args, embed_dim, args.decoder_attention_heads)
+            #             for _ in range(len(self.plug_in_layers))
+            #         ]
+            #     )
+            # else:
+            #     self.self_plug_ins = None
         else:
             self.plug_ins = None
-            self.self_plug_ins = None
+            # self.self_plug_ins = None
 
         if getattr(args, "layernorm_embedding", False):
             self.layernorm_embedding = LayerNorm(embed_dim)
@@ -1034,7 +1034,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             if attend_kv_table and 'dec' in self.args.plug_in_component and idx in self.plug_in_layers:
                 if self.args.plug_in_forward == 'bottom':
                     temp_tgt_k, temp_tgt_v = self.plug_ins[self.plug_in_layer_map[idx]](tgt_k, tgt_v)
-                    temp_self_k, temp_self_v = self.self_plug_ins[self.plug_in_layer_map[idx]](tgt_v_embed, tgt_v_embed)
+                    # temp_self_k, temp_self_v = self.self_plug_ins[self.plug_in_layer_map[idx]](tgt_v_embed, tgt_v_embed)
                 else:
                     temp_tgt_k, temp_tgt_v = self.plug_ins[self.plug_in_layer_map[idx]](temp_tgt_k, temp_tgt_v)
             else:
@@ -1055,9 +1055,9 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                 self_attn_padding_mask=self_attn_padding_mask,
                 need_attn=bool((idx == alignment_layer)),
                 need_head_weights=bool((idx == alignment_layer)),
-                past_key=(temp_tgt_k, temp_self_k),
-                past_value=(temp_tgt_v, temp_self_v),
-                past_key_padding_mask=(tgt_k_padding_mask, tgt_v_padding_mask),
+                past_key=temp_tgt_k,
+                past_value=temp_tgt_v,
+                past_key_padding_mask=tgt_k_padding_mask,
                 past_kv_forward=self.args.plug_in_project,
             )
             inner_states.append(x)
