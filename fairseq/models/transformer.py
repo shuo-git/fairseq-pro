@@ -514,11 +514,17 @@ class TransformerEncoder(FairseqEncoder):
             tgt_k = tgt_k.transpose(0, 1).view(bsz, -1, embed_dim).transpose(0, 1) # 3T(k) x B x C
             tgt_v = tgt_v.transpose(0, 1).contiguous().view(bsz, -1, embed_dim).transpose(0, 1) # 3T(k) x B x C
             tgt_k_padding_mask = target_key.view(bsz, -1).eq(self.padding_idx) # B x 3T(k)
+
+            target_value = target_value.view(bsz, -1) # B x 3T(v)
+            tgt_v_embed, _ = self.forward_embedding(target_value).transpose(0, 1) # 3T(v) x B x C
+            tgt_v_padding_mask = target_value.view(bsz, -1) # B x 3T(v)
             attend_kv_table = True
         else:
             tgt_k = None
             tgt_v = None
             tgt_k_padding_mask = None
+            tgt_v_embed = None
+            tgt_v_padding_mask = None
             attend_kv_table = False
 
         # B x T x C -> T x B x C
@@ -566,6 +572,8 @@ class TransformerEncoder(FairseqEncoder):
             tgt_k=tgt_k,  # 3T(k) x B x C
             tgt_v=tgt_v,  # 3T(k) x B x C
             tgt_k_padding_mask=tgt_k_padding_mask,  # B x 3T(k)
+            tgt_v_embed=tgt_v_embed,  # 3T(v) x B x C
+            tgt_v_padding_mask=tgt_v_padding_mask,  # B x 3T(v)
         )
 
     @torch.jit.export
@@ -626,6 +634,13 @@ class TransformerEncoder(FairseqEncoder):
         if tgt_k_padding_mask is not None:
             tgt_k_padding_mask = tgt_k_padding_mask.index_select(0, new_order)
 
+        tgt_v_embed = encoder_out.tgt_v_embed
+        if tgt_v_embed is not None:
+            tgt_v_embed = tgt_v_embed.index_select(1, new_order)
+        tgt_v_padding_mask = encoder_out.tgt_v_padding_mask
+        if tgt_v_padding_mask is not None:
+            tgt_v_padding_mask = tgt_v_padding_mask.index_select(0, new_order)
+
         return EncoderOut(
             encoder_out=new_encoder_out,  # T x B x C
             encoder_padding_mask=new_encoder_padding_mask,  # B x T
@@ -636,6 +651,8 @@ class TransformerEncoder(FairseqEncoder):
             tgt_k=tgt_k,  # 3T(k) x B x C
             tgt_v=tgt_v,  # 3T(k) x B x C
             tgt_k_padding_mask=tgt_k_padding_mask,  # B x 3T(k)
+            tgt_v_embed=tgt_v_embed,  # 3T(v) x B x C
+            tgt_v_padding_mask=tgt_v_padding_mask,  # B x 3T(v)
         )
 
     def max_positions(self):
@@ -753,8 +770,19 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                 )
             if not self.args.no_plug_in_pointer and not self.args.no_plug_in_pointer_gate:
                 self.plug_ins.append(self.build_softmax_plug_in(args, embed_dim, args.decoder_attention_heads))
+            if self.args.plug_in_dec_self_attn:
+                self.self_plug_ins = nn.ModuleList([])
+                self.self_plug_ins.extend(
+                    [
+                        build_plug_in_layer(args, embed_dim, args.decoder_attention_heads)
+                        for _ in range(len(self.plug_in_layers))
+                    ]
+                )
+            else:
+                self.self_plug_ins = None
         else:
             self.plug_ins = None
+            self.self_plug_ins = None
 
         if getattr(args, "layernorm_embedding", False):
             self.layernorm_embedding = LayerNorm(embed_dim)
@@ -954,11 +982,13 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             tgt_k = encoder_out.tgt_k
             tgt_v = encoder_out.tgt_v
             tgt_k_padding_mask = encoder_out.tgt_k_padding_mask
+            tgt_v_embed = encoder_out.tgt_v_embed
+            tgt_v_padding_mask = encoder_out.tgt_v_padding_mask
             tgt_k_toks = kwargs.get('target_key').view(bsz, -1)
             tgt_v_toks = kwargs.get('target_value').view(bsz, -1)
         else:
-            tgt_k = tgt_v = None
-            tgt_k_padding_mask = None
+            tgt_k = tgt_v = tgt_v_embed = None
+            tgt_k_padding_mask = tgt_v_padding_mask = None
             tgt_k_toks = tgt_v_toks = None
 
         # if self.quant_noise is not None:
@@ -978,6 +1008,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             if attend_kv_table:
                 tgt_k = self.layernorm_embedding(tgt_k)
                 tgt_v = self.layernorm_embedding(tgt_v)
+                tgt_v_embed = self.layernorm_embedding(tgt_v_embed)
 
         if self.args.word_dropout:
             if self.training:
@@ -1002,10 +1033,12 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             if attend_kv_table and 'dec' in self.args.plug_in_component and idx in self.plug_in_layers:
                 if self.args.plug_in_forward == 'bottom':
                     temp_tgt_k, temp_tgt_v = self.plug_ins[self.plug_in_layer_map[idx]](tgt_k, tgt_v)
+                    temp_self_k, temp_self_v = self.self_plug_ins[self.plug_in_layer_map[idx]](tgt_v_embed, tgt_v_embed)
                 else:
                     temp_tgt_k, temp_tgt_v = self.plug_ins[self.plug_in_layer_map[idx]](temp_tgt_k, temp_tgt_v)
             else:
                 temp_tgt_k = temp_tgt_v = None
+                temp_self_k, temp_self_v = None
 
             if incremental_state is None and not full_context_alignment:
                 self_attn_mask = self.buffered_future_mask(x)
@@ -1021,9 +1054,9 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                 self_attn_padding_mask=self_attn_padding_mask,
                 need_attn=bool((idx == alignment_layer)),
                 need_head_weights=bool((idx == alignment_layer)),
-                past_key=temp_tgt_k,
-                past_value=temp_tgt_v,
-                past_key_padding_mask=tgt_k_padding_mask,
+                past_key=(temp_tgt_k, temp_self_k),
+                past_value=(temp_tgt_v, temp_self_v),
+                past_key_padding_mask=(tgt_k_padding_mask, tgt_v_padding_mask),
                 past_kv_forward=self.args.plug_in_project,
             )
             inner_states.append(x)

@@ -478,9 +478,9 @@ class TransformerDecoderLayer(nn.Module):
                 incremental_state=incremental_state,
                 need_weights=False,
                 attn_mask=self_attn_mask,
-                past_key=past_key,
-                past_value=past_value,
-                past_key_padding_mask=past_key_padding_mask,
+                past_key=past_key[1],
+                past_value=past_value[1],
+                past_key_padding_mask=past_key_padding_mask[1],
                 past_kv_forward=past_kv_forward,
             )
         else:
@@ -522,9 +522,9 @@ class TransformerDecoderLayer(nn.Module):
                 static_kv=True,
                 need_weights=need_attn or (not self.training and self.need_attn),
                 need_head_weights=need_head_weights,
-                past_key=past_key,
-                past_value=past_value,
-                past_key_padding_mask=past_key_padding_mask,
+                past_key=past_key[0],
+                past_value=past_value[0],
+                past_key_padding_mask=past_key_padding_mask[0],
                 past_kv_forward=past_kv_forward,
             )
             x = self.dropout_module(x)

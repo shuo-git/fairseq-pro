@@ -79,6 +79,9 @@ def main(args):
                 p.requires_grad = True
         for p in model.decoder.plug_ins.parameters():
             p.requires_grad = True
+        if args.plug_in_dec_self_attn:
+            for p in model.decoder.self_plug_ins.parameters():
+                p.requires_grad = True
     criterion = task.build_criterion(args)
     logger.info(model)
     logger.info("task: {} ({})".format(args.task, task.__class__.__name__))

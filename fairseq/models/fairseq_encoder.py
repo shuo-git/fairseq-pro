@@ -20,6 +20,8 @@ EncoderOut = NamedTuple(
         ("tgt_k", Optional[Tensor]),  # 3T(k) x B x C
         ("tgt_v", Optional[Tensor]),  # 3T(k) x B x C
         ("tgt_k_padding_mask", Optional[Tensor]),  # B x 3T(k)
+        ("tgt_v_embed", Optional[Tensor]),  # 3T(v) x B x C
+        ("tgt_v_padding_mask", Optional[Tensor]),  # B x 3T(v)
     ],
 )
 
