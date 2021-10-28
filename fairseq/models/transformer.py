@@ -1039,7 +1039,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                     temp_tgt_k, temp_tgt_v = self.plug_ins[self.plug_in_layer_map[idx]](temp_tgt_k, temp_tgt_v)
             else:
                 temp_tgt_k = temp_tgt_v = None
-                temp_self_k, temp_self_v = None
+                temp_self_k = temp_self_v = None
 
             if incremental_state is None and not full_context_alignment:
                 self_attn_mask = self.buffered_future_mask(x)
