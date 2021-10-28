@@ -22,7 +22,7 @@ import torch
 from fairseq import checkpoint_utils, distributed_utils, options, tasks, utils
 from fairseq.data import encoders
 from fairseq.token_generation_constraints import pack_constraints, unpack_constraints
-from .generate import get_symbols_to_strip_from_output
+# from .generate import get_symbols_to_strip_from_output
 
 logging.basicConfig(
     format='%(asctime)s | %(levelname)s | %(name)s | %(message)s',
@@ -35,6 +35,13 @@ logger = logging.getLogger('fairseq_cli.interactive')
 
 Batch = namedtuple('Batch', 'ids src_tokens src_lengths constraints')
 Translation = namedtuple('Translation', 'src_str hypos pos_scores alignments')
+
+
+def get_symbols_to_strip_from_output(generator):
+    if hasattr(generator, 'symbols_to_strip_from_output'):
+        return generator.symbols_to_strip_from_output
+    else:
+        return {generator.eos}
 
 
 def buffered_read(input, buffer_size):
