@@ -83,7 +83,7 @@ def make_batches(lines, args, task, max_positions, encode_fn):
         ).long()
         for src_str in lines
     ]
-
+    # at this point, batch_constraints is a list of list of Tensor, no pad, no </s>
     if args.constraints:
         constraints_tensor = pack_constraints(batch_constraints)
     else:
