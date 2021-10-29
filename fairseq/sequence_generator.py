@@ -204,8 +204,8 @@ class SequenceGenerator(nn.Module):
         bsz, src_len = src_tokens.size()[:2]
         beam_size = self.beam_size
 
-        if constraints is not None and not self.search.supports_constraints:
-            raise NotImplementedError("Target-side constraints were provided, but search method doesn't support them")
+        # if constraints is not None and not self.search.supports_constraints:
+        #     raise NotImplementedError("Target-side constraints were provided, but search method doesn't support them")
 
         # Initialize constraints, when active
         self.search.init_constraints(constraints, beam_size)
