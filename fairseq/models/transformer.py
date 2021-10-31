@@ -788,7 +788,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             # self.self_plug_ins = None
 
         # Build Source Pointer Network
-        if self.source_pointer:
+        if self.args.source_pointer:
             p_gen_input_size = input_embed_dim + self.output_embed_dim
             self.project_p_gens = nn.Linear(p_gen_input_size, 1)
             nn.init.zeros_(self.project_p_gens.bias)
