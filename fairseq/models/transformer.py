@@ -181,7 +181,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='if True, use word dropout on embedding layer of decoder')
         parser.add_argument('--word-dropout-prob', type=float, metavar='D', default=0,
                             help='word dropout probability')
-        # attn prompt parameters
+        # attn plug-in parameters
         parser.add_argument('--target-kv-table', action='store_true', default=False)
         parser.add_argument('--encoder-out-key', action='store_true', default=False)
         parser.add_argument('--plug-in-type', default='type1',
@@ -205,6 +205,8 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='dropout probability for kv projections')
         parser.add_argument('--plug-in-enc-layers', type=str, default='0,1,2,3,4,5')
         parser.add_argument('--plug-in-dec-layers', type=str, default='0,1,2,3,4,5')
+        # baseline pointer network parameters
+        parser.add_argument('--source-pointer', action='store_true', default=False)
         # fmt: on
 
     @classmethod
@@ -568,8 +570,8 @@ class TransformerEncoder(FairseqEncoder):
             encoder_padding_mask=encoder_padding_mask,  # B x T
             encoder_embedding=encoder_embedding,  # B x T x C
             encoder_states=encoder_states,  # List[T x B x C]
-            src_tokens=None,
-            src_lengths=None,
+            src_tokens=src_tokens,
+            src_lengths=src_lengths,
             tgt_k=tgt_k,  # 3T(k) x B x C
             tgt_v=tgt_v,  # 3T(k) x B x C
             tgt_k_padding_mask=tgt_k_padding_mask,  # B x 3T(k)
@@ -755,7 +757,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         else:
             self.embed_languages = None
 
-        # Build the Plug-In network
+        # Build Plug-In network
         self.plug_in_layers = [int(pl) for pl in self.args.plug_in_dec_layers.split(',')]
         self.plug_in_layer_map = {}
         for idx, pl in enumerate(self.plug_in_layers):
@@ -784,6 +786,12 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         else:
             self.plug_ins = None
             # self.self_plug_ins = None
+
+        # Build Source Pointer Network
+        if self.source_pointer:
+            p_gen_input_size = input_embed_dim + self.output_embed_dim
+            self.project_p_gens = nn.Linear(p_gen_input_size, 1)
+            nn.init.zeros_(self.project_p_gens.bias)
 
         if getattr(args, "layernorm_embedding", False):
             self.layernorm_embedding = LayerNorm(embed_dim)
@@ -1069,7 +1077,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                 attn = attn[:alignment_heads]
 
             # average probabilities over heads
-            attn = attn.mean(dim=0)
+            attn = attn.mean(dim=0) # B x T(tgt) x T(src)
 
         if self.layer_norm is not None:
             x = self.layer_norm(x)
@@ -1091,6 +1099,24 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         logits = self.output_layer(x)
         model_prob = utils.softmax(logits, dim=-1) + epsilon # B x T x V, fp32
         rank_reg = 0.
+
+        if self.args.source_pointer:
+            prev_output_embed = self.embed_tokens(prev_output_tokens)
+            prev_output_embed *= self.embed_scale
+            predictors = torch.cat((prev_output_embed, x), 2)
+            p_gens = self.project_p_gens(predictors)
+            p_gens = torch.sigmoid(p_gens.float())
+            src_tokens = encoder_out.src_tokens
+            src_length = src_tokens.shape[1]
+            gen_dists = torch.mul(model_prob, p_gens)
+            assert attn is not None
+            attn = torch.mul(attn.float(), 1 - p_gens)
+            index = src_tokens.unsqueeze(1)
+            index = index.expand(bsz, seq_len, src_length)
+            attn_dists_size = (bsz, seq_len, model_prob.shape[-1])
+            attn_dists = attn.new_zeros(attn_dists_size)
+            attn_dists.scatter_add_(2, index, attn.float())
+            model_prob = gen_dists + attn_dists
 
         if attend_kv_table and not self.args.no_plug_in_pointer:
             # Decoding Rule-1 by Shuo

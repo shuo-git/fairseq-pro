@@ -155,13 +155,14 @@ class TransformerEncoderLayer(nn.Module):
 
 
 class Target_Plug_In_Layer_Type1(nn.Module):
-    def __init__(self, args, my_dim, head_num, bias=True):
+    def __init__(self, args, my_dim, head_num, bias=True, activation='linear'):
         super().__init__()
         self.dropout_module = FairseqDropout(args.kv_projection_dropout, module_name=self.__class__.__name__)
         if args.plug_in_k_project:
             self.k_proj = nn.Linear(my_dim, my_dim, bias=bias)
             nn.init.xavier_uniform_(self.k_proj.weight, gain=1 / math.sqrt(2))
             self.k_layer_norm = LayerNorm(my_dim)
+            self.k_activation_fn = utils.get_activation_fn(activation)
             self.k_project = True
         else:
             self.k_project = False
@@ -169,15 +170,16 @@ class Target_Plug_In_Layer_Type1(nn.Module):
             self.v_proj = nn.Linear(my_dim, my_dim, bias=bias)
             nn.init.xavier_uniform_(self.v_proj.weight, gain=1 / math.sqrt(2))
             self.v_layer_norm = LayerNorm(my_dim)
+            self.v_activation_fn = utils.get_activation_fn(activation)
             self.v_project = True
         else:
             self.v_project = False
 
     def forward(self, k, v):
         if self.k_project:
-            k = self.k_layer_norm(self.dropout_module(self.k_proj(k)))
+            k = self.k_layer_norm(self.dropout_module(self.k_activation_fn(self.k_proj(k))))
         if self.v_project:
-            v = self.v_layer_norm(self.dropout_module(self.v_proj(v)))
+            v = self.v_layer_norm(self.dropout_module(self.v_activation_fn(self.v_proj(v))))
         return k, v
 
 
