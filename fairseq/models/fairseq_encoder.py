@@ -17,6 +17,8 @@ EncoderOut = NamedTuple(
         ("encoder_states", Optional[List[Tensor]]),  # List[T x B x C]
         ("src_tokens", Optional[Tensor]),  # B x T
         ("src_lengths", Optional[Tensor]),  # B x 1
+        ("dec_pmt_k", Optional[Tensor]),  # T x B x (6 x C)
+        ("dec_pmt_v", Optional[Tensor]),  # T x B x (6 x C)
     ],
 )
 

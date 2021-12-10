@@ -13,6 +13,30 @@ from fairseq.modules.quant_noise import quant_noise
 from fairseq.modules.fairseq_dropout import FairseqDropout
 from torch import Tensor
 
+class AdaptNet(nn.Module):
+    def __init__(self, args, bias=True):
+        super().__init__()
+        self.dropout_module = FairseqDropout(args.prompt_dropout, module_name=self.__class__.__name__)
+        self.k_fc1 = nn.Linear(args.encoder_embed_dim, args.prompt_adapt_mid_dim, bias=bias)
+        self.k_fc2 = nn.Linear(args.prompt_adapt_mid_dim, args.encoder_embed_dim * (args.encoder_layers + args.decoder_layers), bias=bias)
+        nn.init.xavier_uniform_(self.k_fc1.weight, gain=1 / math.sqrt(2))
+        nn.init.xavier_uniform_(self.k_fc2.weight, gain=1 / math.sqrt(2))
+        self.k_activation_fn = utils.get_activation_fn('gelu')
+        self.k_layer_norm = LayerNorm(args.encoder_embed_dim)
+
+        self.v_fc1 = nn.Linear(args.encoder_embed_dim, args.prompt_adapt_mid_dim, bias=bias)
+        self.v_fc2 = nn.Linear(args.prompt_adapt_mid_dim, args.encoder_embed_dim * (args.encoder_layers + args.decoder_layers), bias=bias)
+        nn.init.xavier_uniform_(self.v_fc1.weight, gain=1 / math.sqrt(2))
+        nn.init.xavier_uniform_(self.v_fc2.weight, gain=1 / math.sqrt(2))
+        self.v_activation_fn = utils.get_activation_fn('gelu')
+        self.v_layer_norm = LayerNorm(args.encoder_embed_dim)
+
+    def forward(self, k, v):
+        k = self.k_layer_norm(self.dropout_module(self.k_fc2(self.dropout_module(self.k_activation_fn(self.k_fc1(k))))))
+        v = self.v_layer_norm(self.dropout_module(self.v_fc2(self.dropout_module(self.v_activation_fn(self.v_fc1(v))))))
+        return k, v
+
+
 class TransformerEncoderLayer(nn.Module):
     """Encoder layer block.
 
@@ -86,7 +110,8 @@ class TransformerEncoderLayer(nn.Module):
                     state_dict["{}.{}.{}".format(name, new, m)] = state_dict[k]
                     del state_dict[k]
 
-    def forward(self, x, encoder_padding_mask, attn_mask: Optional[Tensor] = None):
+    def forward(self, x, encoder_padding_mask, attn_mask: Optional[Tensor] = None,
+                past_key=None, past_value=None, past_key_padding_mask=None):
         """
         Args:
             x (Tensor): input to the layer of shape `(seq_len, batch, embed_dim)`
@@ -119,6 +144,9 @@ class TransformerEncoderLayer(nn.Module):
             value=x,
             key_padding_mask=encoder_padding_mask,
             attn_mask=attn_mask,
+            past_key=past_key,
+            past_value=past_value,
+            past_key_padding_mask=past_key_padding_mask,
         )
         x = self.dropout_module(x)
         x = residual + x
@@ -255,6 +283,9 @@ class TransformerDecoderLayer(nn.Module):
         self_attn_padding_mask: Optional[torch.Tensor] = None,
         need_attn: bool = False,
         need_head_weights: bool = False,
+        past_key: Optional[Tensor] = None,
+        past_value: Optional[Tensor] = None,
+        past_key_padding_mask: Optional[torch.Tensor] = None,
     ):
         """
         Args:
@@ -310,6 +341,12 @@ class TransformerDecoderLayer(nn.Module):
         else:
             y = x
 
+        if self.prompt_dec_self_attn:
+            temp_past_key = past_key
+            temp_past_value = past_value
+            temp_past_key_padding_mask = past_key_padding_mask
+        else:
+            temp_past_key = temp_past_value = temp_past_key_padding_mask = None
         x, attn = self.self_attn(
             query=x,
             key=y,
@@ -318,6 +355,9 @@ class TransformerDecoderLayer(nn.Module):
             incremental_state=incremental_state,
             need_weights=False,
             attn_mask=self_attn_mask,
+            past_key=temp_past_key,
+            past_value=temp_past_value,
+            past_key_padding_mask=temp_past_key_padding_mask,
         )
         x = self.dropout_module(x)
         x = residual + x
@@ -339,6 +379,12 @@ class TransformerDecoderLayer(nn.Module):
                 assert incremental_state is not None
                 self.encoder_attn._set_input_buffer(incremental_state, saved_state)
 
+            if self.prompt_dec_cross_attn:
+                temp_past_key = past_key
+                temp_past_value = past_value
+                temp_past_key_padding_mask = past_key_padding_mask
+            else:
+                temp_past_key = temp_past_value = temp_past_key_padding_mask = None
             x, attn = self.encoder_attn(
                 query=x,
                 key=encoder_out,
@@ -348,6 +394,9 @@ class TransformerDecoderLayer(nn.Module):
                 static_kv=True,
                 need_weights=need_attn or (not self.training and self.need_attn),
                 need_head_weights=need_head_weights,
+                past_key=temp_past_key,
+                past_value=temp_past_value,
+                past_key_padding_mask=temp_past_key_padding_mask,
             )
             x = self.dropout_module(x)
             x = residual + x

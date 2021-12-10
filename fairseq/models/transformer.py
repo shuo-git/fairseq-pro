@@ -26,6 +26,7 @@ from fairseq.modules import (
     SinusoidalPositionalEmbedding,
     TransformerDecoderLayer,
     TransformerEncoderLayer,
+    AdaptNet,
 )
 from fairseq.modules.quant_noise import quant_noise as apply_quant_noise_
 from torch import Tensor
@@ -176,6 +177,12 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='if True, use word dropout on embedding layer of decoder')
         parser.add_argument('--word-dropout-prob', type=float, metavar='D', default=0,
                             help='word dropout probability')
+        # args added by Shuo
+        parser.add_argument('--forward-prompt', default=False, action='store_true')
+        parser.add_argument('--prompt-dropout', type=float, metavar='D')
+        parser.add_argument('--prompt-adapt-mid-dim', type=int, metavar='D', default=512)
+        parser.add_argument('--prompt-dec-self-attn', default=False, action='store_true')
+        parser.add_argument('--prompt-dec-cross-attn', default=False, action='store_true')
         # fmt: on
 
     @classmethod
@@ -215,6 +222,8 @@ class TransformerModel(FairseqEncoderDecoderModel):
             )
             decoder_embed_tokens = encoder_embed_tokens
             args.share_decoder_input_output_embed = True
+
+            encoder_embed_prompt = cls.build_embedding(args, src_dict, args.encoder_embed_dim)
         else:
             encoder_embed_tokens = cls.build_embedding(
                 args, src_dict, args.encoder_embed_dim, args.encoder_embed_path
@@ -223,7 +232,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
                 args, tgt_dict, args.decoder_embed_dim, args.decoder_embed_path
             )
 
-        encoder = cls.build_encoder(args, src_dict, encoder_embed_tokens)
+        encoder = cls.build_encoder(args, src_dict, encoder_embed_tokens, encoder_embed_prompt)
         decoder = cls.build_decoder(args, tgt_dict, decoder_embed_tokens)
         return cls(args, encoder, decoder)
 
@@ -240,8 +249,8 @@ class TransformerModel(FairseqEncoderDecoderModel):
         return emb
 
     @classmethod
-    def build_encoder(cls, args, src_dict, embed_tokens):
-        return TransformerEncoder(args, src_dict, embed_tokens)
+    def build_encoder(cls, args, src_dict, embed_tokens, embed_prompt=None):
+        return TransformerEncoder(args, src_dict, embed_tokens, embed_prompt)
 
     @classmethod
     def build_decoder(cls, args, tgt_dict, embed_tokens):
@@ -263,6 +272,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         features_only: bool = False,
         alignment_layer: Optional[int] = None,
         alignment_heads: Optional[int] = None,
+        **kwargs,
     ):
         """
         Run the forward pass for an encoder-decoder model.
@@ -271,7 +281,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         which are not supported by TorchScript.
         """
         encoder_out = self.encoder(
-            src_tokens, src_lengths=src_lengths, return_all_hiddens=return_all_hiddens
+            src_tokens, src_lengths=src_lengths, return_all_hiddens=return_all_hiddens, **kwargs
         )
         decoder_out = self.decoder(
             prev_output_tokens,
@@ -281,6 +291,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
             alignment_heads=alignment_heads,
             src_lengths=src_lengths,
             return_all_hiddens=return_all_hiddens,
+            **kwargs,
         )
         return decoder_out
 
@@ -309,18 +320,22 @@ class TransformerEncoder(FairseqEncoder):
         embed_tokens (torch.nn.Embedding): input embedding
     """
 
-    def __init__(self, args, dictionary, embed_tokens):
+    def __init__(self, args, dictionary, embed_tokens, embed_prompt=None):
         super().__init__(dictionary)
         self.register_buffer("version", torch.Tensor([3]))
 
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
         self.encoder_layerdrop = args.encoder_layerdrop
+        self.forward_prompt = args.forward_prompt
+        self.encoder_embed_dim = args.encoder_embed_dim
+        self.encoder_layers = args.encoder_layers
 
         embed_dim = embed_tokens.embedding_dim
         self.padding_idx = embed_tokens.padding_idx
         self.max_source_positions = args.max_source_positions
 
         self.embed_tokens = embed_tokens
+        self.embed_prompt = embed_prompt
 
         self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
 
@@ -358,6 +373,9 @@ class TransformerEncoder(FairseqEncoder):
         )
         self.num_layers = len(self.layers)
 
+        if self.forward_prompt:
+            self.adaptnet = AdaptNet(args)
+
         if args.encoder_normalize_before:
             self.layer_norm = LayerNorm(embed_dim)
         else:
@@ -378,7 +396,19 @@ class TransformerEncoder(FairseqEncoder):
             x = self.quant_noise(x)
         return x, embed
 
-    def forward(self, src_tokens, src_lengths, return_all_hiddens: bool = False):
+    def forward_prompt_embedding(self, prompt):
+        # embed tokens and positions
+        x = embed = self.embed_scale * self.embed_prompt(prompt)
+        if self.embed_positions is not None:
+            x = embed + self.embed_positions(prompt)
+        if self.layernorm_embedding is not None:
+            x = self.layernorm_embedding(x)
+        x = self.dropout_module(x)
+        if self.quant_noise is not None:
+            x = self.quant_noise(x)
+        return x, embed
+
+    def forward(self, src_tokens, src_lengths, return_all_hiddens: bool = False, **kwargs):
         """
         Args:
             src_tokens (LongTensor): tokens in the source language of shape
@@ -401,18 +431,52 @@ class TransformerEncoder(FairseqEncoder):
                   Only populated if *return_all_hiddens* is True.
         """
         x, encoder_embedding = self.forward_embedding(src_tokens)
+        if kwargs.get('prompt', None) is not None and self.forward_prompt:
+            with_prompt = True
+            pmt_tok = kwargs.get('prompt')
+        else:
+            with_prompt = False
+
+        if with_prompt:
+            pmt, pmt_emb = self.forward_prompt_embedding(pmt_tok)
 
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
+        pmt = pmt.transpose(0, 1)
 
         # compute padding mask
         encoder_padding_mask = src_tokens.eq(self.padding_idx)
+        prompt_padding_mask = pmt_tok.eq(self.padding_idx)
+
+        if with_prompt:
+            pmt_k, pmt_v = self.adaptnet(pmt, pmt)
+            enc_pmt_k = pmt_k[:, :, :self.encoder_embed_dim * self.encoder_layers]
+            enc_pmt_v = pmt_v[:, :, :self.encoder_embed_dim * self.encoder_layers]
+            dec_pmt_k = pmt_k[:, :, self.encoder_embed_dim * self.encoder_layers:]
+            dec_pmt_v = pmt_v[:, :, self.encoder_embed_dim * self.encoder_layers:]
+
+            enc_pmt_k_list = torch.split(enc_pmt_k, self.encoder_layers, dim=-1)
+            enc_pmt_v_list = torch.split(enc_pmt_v, self.encoder_layers, dim=-1)
+        else:
+            dec_pmt_k = dec_pmt_v = None
 
         encoder_states = [] if return_all_hiddens else None
 
         # encoder layers
-        for layer in self.layers:
-            x = layer(x, encoder_padding_mask)
+        for idx, layer in enumerat(self.layers):
+            if with_prompt:
+                temp_k = enc_pmt_k_list[idx]
+                temp_v = enc_pmt_v_list[idx]
+            else:
+                temp_k = None
+                temp_v = None
+            x = layer(
+                x,
+                encoder_padding_mask,
+                past_key=temp_k,
+                past_value=temp_v,
+                past_key_padding_mask=prompt_padding_mask,
+            )
             if return_all_hiddens:
                 assert encoder_states is not None
                 encoder_states.append(x)
@@ -427,6 +491,8 @@ class TransformerEncoder(FairseqEncoder):
             encoder_states=encoder_states,  # List[T x B x C]
             src_tokens=None,
             src_lengths=None,
+            dec_pmt_k=dec_pmt_k,
+            dec_pmt_v=dec_pmt_v,
         )
 
     @torch.jit.export
@@ -477,6 +543,10 @@ class TransformerEncoder(FairseqEncoder):
             for idx, state in enumerate(encoder_states):
                 encoder_states[idx] = state.index_select(1, new_order)
 
+        if dec_pmt_k is not None and dec_pmt_v is not None:
+            dec_pmt_k = dec_pmt_k.index_select(1, new_order)
+            dec_pmt_v = dec_pmt_v.index_select(1, new_order)
+
         return EncoderOut(
             encoder_out=new_encoder_out,  # T x B x C
             encoder_padding_mask=new_encoder_padding_mask,  # B x T
@@ -484,6 +554,8 @@ class TransformerEncoder(FairseqEncoder):
             encoder_states=encoder_states,  # List[T x B x C]
             src_tokens=src_tokens,  # B x T
             src_lengths=src_lengths,  # B x 1
+            dec_pmt_k=dec_pmt_k,  # T x B x (6 x C)
+            dec_pmt_v=dec_pmt_v,  # T x B x (6 x C)
         )
 
     def max_positions(self):
@@ -544,6 +616,8 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         embed_dim = args.decoder_embed_dim
         self.embed_dim = embed_dim
         self.output_embed_dim = args.decoder_output_dim
+        self.forward_prompt = args.forward_prompt
+        self.decoder_layers = args.decoder_layers
 
         self.padding_idx = embed_tokens.padding_idx
         self.max_target_positions = args.max_target_positions
@@ -681,6 +755,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             alignment_layer=alignment_layer,
             alignment_heads=alignment_heads,
             prev_output_wil=kwargs.get('src_wil', None),
+            **kwargs,
         )
         if not features_only:
             x = self.output_layer(x)
@@ -701,6 +776,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         alignment_layer: Optional[int] = None,
         alignment_heads: Optional[int] = None,
         prev_output_wil = None,
+        **kwargs,
     ):
         return self.extract_features_scriptable(
             prev_output_tokens,
@@ -710,6 +786,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             alignment_layer,
             alignment_heads,
             prev_output_wil=prev_output_wil,
+            **kwargs,
         )
 
     """
@@ -727,6 +804,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         alignment_layer: Optional[int] = None,
         alignment_heads: Optional[int] = None,
         prev_output_wil = None,
+        **kwargs,
     ):
         """
         Similar to *forward* but only return features.
@@ -763,6 +841,16 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             # Step2: padding wil
             prev_output_wil = prev_output_wil % self.args.segment_embed_mod
             prev_output_wil[prev_output_tokens == self.padding_idx] = self.args.language_embedding_num
+
+        if kwargs.get('prompt', None) is not None and self.forward_prompt:
+            with_prompt = True
+            pmt_tok = kwargs.get('prompt')
+            dec_pmt_k = encoder_out.dec_pmt_k
+            dec_pmt_v = encoder_out.dec_pmt_v
+            dec_pmt_k_list = torch.split(dec_pmt_k, self.decoder_layers, dim=-1)
+            dec_pmt_v_list = torch.split(dec_pmt_v, self.decoder_layers, dim=-1)
+        else:
+            with_prompt = False
 
         # embed positions
         positions = (
@@ -815,6 +903,8 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         self_attn_padding_mask: Optional[Tensor] = None
         if self.cross_self_attention or prev_output_tokens.eq(self.padding_idx).any():
             self_attn_padding_mask = prev_output_tokens.eq(self.padding_idx)
+        if with_prompt:
+            prompt_padding_mask = pmt_tok.eq(self.padding_idx)
 
         # decoder layers
         attn: Optional[Tensor] = None
@@ -824,7 +914,11 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                 self_attn_mask = self.buffered_future_mask(x)
             else:
                 self_attn_mask = None
-
+            if with_prompt:
+                temp_k = dec_pmt_k_list[idx]
+                temp_v = dec_pmt_v_list[idx]
+            else:
+                temp_k = temp_v = None
             x, layer_attn, _ = layer(
                 x,
                 encoder_out.encoder_out if encoder_out is not None else None,
@@ -834,6 +928,9 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                 self_attn_padding_mask=self_attn_padding_mask,
                 need_attn=bool((idx == alignment_layer)),
                 need_head_weights=bool((idx == alignment_layer)),
+                past_key=temp_k,
+                past_value=temp_v,
+                past_key_padding_mask=prompt_padding_mask,
             )
             inner_states.append(x)
             if layer_attn is not None and idx == alignment_layer:

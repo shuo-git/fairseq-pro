@@ -181,6 +181,7 @@ class SequenceGenerator(nn.Module):
             ],
         )
         net_input = sample["net_input"]
+        prompt = sample["net_input"].get("prompt", None)
 
         if 'src_tokens' in net_input:
             src_tokens = net_input['src_tokens']
@@ -228,6 +229,8 @@ class SequenceGenerator(nn.Module):
         encoder_outs = self.model.reorder_encoder_out(encoder_outs, new_order)
         if prefix_wil is not None:
             prefix_wil = prefix_wil.index_select(0, new_order)
+        if prompt is not None:
+            prompt = prompt.index_select(0, new_order)
         # ensure encoder_outs is a List.
         assert encoder_outs is not None
 
@@ -290,13 +293,16 @@ class SequenceGenerator(nn.Module):
                 )
                 if prefix_wil is not None:
                     prefix_wil = prefix_wil.index_select(0, reorder_state)
+                if prompt is not None:
+                    prompt = prompt.index_select(0, reorder_state)
 
             lprobs, avg_attn_scores = self.model.forward_decoder(
                 tokens[:, : step + 1],
                 encoder_outs,
                 incremental_states,
                 self.temperature,
-                prefix_wil=prefix_wil
+                prefix_wil=prefix_wil,
+                prompt=prompt,
             )
             lprobs[lprobs != lprobs] = torch.tensor(-math.inf).to(lprobs)
 
@@ -778,6 +784,7 @@ class EnsembleModel(nn.Module):
         incremental_states: List[Dict[str, Dict[str, Optional[Tensor]]]],
         temperature: float = 1.0,
         prefix_wil: Tensor = None,
+        prompt: Tensor = None,
     ):
         log_probs = []
         avg_attn: Optional[Tensor] = None
@@ -792,12 +799,14 @@ class EnsembleModel(nn.Module):
                     encoder_out=encoder_out,
                     incremental_state=incremental_states[i],
                     src_wil=prefix_wil,
+                    prompt=prompt,
                 )
             else:
                 decoder_out = model.decoder.forward(
                     tokens,
                     encoder_out=encoder_out,
                     src_wil=prefix_wil,
+                    prompt=prompt,
                 )
 
             attn: Optional[Tensor] = None

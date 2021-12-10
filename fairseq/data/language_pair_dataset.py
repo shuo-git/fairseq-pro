@@ -95,6 +95,11 @@ def collate(
     else:
         ntokens = src_lengths.sum().item()
 
+    prompt = None
+    if samples[0].get('prompt', None) is not None:
+        prompt = merge('prompt', left_pad=left_pad_source)
+        prompt = prompt.index_select(0, sort_order)
+
     batch = {
         'id': id,
         'nsentences': len(samples),
@@ -107,6 +112,8 @@ def collate(
     }
     if prev_output_tokens is not None:
         batch['net_input']['prev_output_tokens'] = prev_output_tokens.index_select(0, sort_order)
+    if prompt is not None:
+        batch['net_input']['prompt'] = prompt
 
     if samples[0].get('alignment', None) is not None:
         bsz, tgt_sz = batch['target'].shape
@@ -197,6 +204,7 @@ class LanguagePairDataset(FairseqDataset):
         num_buckets=0,
         src_lang_id=None,
         tgt_lang_id=None,
+        target_key_sep=-1,
     ):
         if tgt_dict is not None:
             assert src_dict.pad() == tgt_dict.pad()
@@ -225,6 +233,7 @@ class LanguagePairDataset(FairseqDataset):
         self.eos = (eos if eos is not None else src_dict.eos())
         self.src_lang_id = src_lang_id
         self.tgt_lang_id = tgt_lang_id
+        self.target_key_sep = target_key_sep
         if num_buckets > 0:
             from fairseq.data import BucketPadLengthDataset
             self.src = BucketPadLengthDataset(
@@ -268,25 +277,34 @@ class LanguagePairDataset(FairseqDataset):
         # EOS from end of src sentence if it exists. This is useful when we use
         # use existing datasets for opposite directions i.e., when we want to
         # use tgt_dataset as src_dataset and vice versa
-        if self.append_eos_to_target:
-            eos = self.tgt_dict.eos() if self.tgt_dict else self.src_dict.eos()
-            if self.tgt and self.tgt[index][-1] != eos:
-                tgt_item = torch.cat([self.tgt[index], torch.LongTensor([eos])])
+        # if self.append_eos_to_target:
+        #     eos = self.tgt_dict.eos() if self.tgt_dict else self.src_dict.eos()
+        #     if self.tgt and self.tgt[index][-1] != eos:
+        #         tgt_item = torch.cat([self.tgt[index], torch.LongTensor([eos])])
 
-        if self.append_bos:
-            bos = self.tgt_dict.bos() if self.tgt_dict else self.src_dict.bos()
-            if self.tgt and self.tgt[index][0] != bos:
-                tgt_item = torch.cat([torch.LongTensor([bos]), self.tgt[index]])
+        # if self.append_bos:
+        #     bos = self.tgt_dict.bos() if self.tgt_dict else self.src_dict.bos()
+        #     if self.tgt and self.tgt[index][0] != bos:
+        #         tgt_item = torch.cat([torch.LongTensor([bos]), self.tgt[index]])
 
-            bos = self.src_dict.bos()
-            if self.src[index][0] != bos:
-                src_item = torch.cat([torch.LongTensor([bos]), self.src[index]])
+        #     bos = self.src_dict.bos()
+        #     if self.src[index][0] != bos:
+        #         src_item = torch.cat([torch.LongTensor([bos]), self.src[index]])
 
-        if self.remove_eos_from_source:
-            eos = self.src_dict.eos()
-            if self.src[index][-1] == eos:
-                src_item = self.src[index][:-1]
-
+        # if self.remove_eos_from_source:
+        #     eos = self.src_dict.eos()
+        #     if self.src[index][-1] == eos:
+        #         src_item = self.src[index][:-1]
+        if self.target_key_sep > -1:
+            sep_idx = -1
+            for my_idx, my_item in enumerate(tgt_item.tolist()):
+                if my_item == self.target_key_sep:
+                    sep_idx = my_idx
+            assert sep_idx > -1
+            prompt = tgt_item[:sep_idx]
+            tgt_item = tgt_item[sep_idx+1:]
+        else:
+            prompt = None
         example = {
             'id': index,
             'source': src_item,
@@ -296,6 +314,8 @@ class LanguagePairDataset(FairseqDataset):
             example['alignment'] = self.align_dataset[index]
         if self.constraints is not None:
             example["constraints"] = self.constraints[index]
+        if prompt is not None:
+            example["prompt"] = prompt
         return example
 
     def __len__(self):
