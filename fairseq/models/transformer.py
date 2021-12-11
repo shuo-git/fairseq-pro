@@ -491,8 +491,8 @@ class TransformerEncoder(FairseqEncoder):
             encoder_states=encoder_states,  # List[T x B x C]
             src_tokens=None,
             src_lengths=None,
-            dec_pmt_k=dec_pmt_k,
-            dec_pmt_v=dec_pmt_v,
+            dec_pmt_k=dec_pmt_k,  # T x B x (6 x C)
+            dec_pmt_v=dec_pmt_v,  # T x B x (6 x C)
         )
 
     @torch.jit.export

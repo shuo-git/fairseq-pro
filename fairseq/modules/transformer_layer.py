@@ -213,6 +213,8 @@ class TransformerDecoderLayer(nn.Module):
         self.activation_dropout_module = FairseqDropout(
             float(activation_dropout_p), module_name=self.__class__.__name__)
         self.normalize_before = args.decoder_normalize_before
+        self.prompt_dec_self_attn = args.prompt_dec_self_attn
+        self.prompt_dec_cross_attn = args.prompt_dec_cross_attn
 
         # use layerNorm rather than FusedLayerNorm for exporting.
         # char_inputs can be used to determint this.
