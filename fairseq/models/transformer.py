@@ -447,7 +447,8 @@ class TransformerEncoder(FairseqEncoder):
 
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
-        pmt = pmt.transpose(0, 1)
+        if with_prompt:
+            pmt = pmt.transpose(0, 1)
 
         # compute padding mask
         encoder_padding_mask = src_tokens.eq(self.padding_idx)
