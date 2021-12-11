@@ -433,6 +433,8 @@ class TransformerEncoder(FairseqEncoder):
                   hidden states of shape `(src_len, batch, embed_dim)`.
                   Only populated if *return_all_hiddens* is True.
         """
+        if not self.forward_prompt and kwargs.get('prompt', None) is not None:
+            src_tokens = torch.cat([kwargs.get('prompt'), src_tokens], dim=1)
         x, encoder_embedding = self.forward_embedding(src_tokens)
         if kwargs.get('prompt', None) is not None and self.forward_prompt:
             with_prompt = True
