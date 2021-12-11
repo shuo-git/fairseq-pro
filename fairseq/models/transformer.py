@@ -455,8 +455,8 @@ class TransformerEncoder(FairseqEncoder):
             dec_pmt_k = pmt_k[:, :, self.encoder_embed_dim * self.encoder_layers:]
             dec_pmt_v = pmt_v[:, :, self.encoder_embed_dim * self.encoder_layers:]
 
-            enc_pmt_k_list = torch.split(enc_pmt_k, self.encoder_layers, dim=-1)
-            enc_pmt_v_list = torch.split(enc_pmt_v, self.encoder_layers, dim=-1)
+            enc_pmt_k_list = torch.split(enc_pmt_k, self.encoder_embed_dim, dim=-1)
+            enc_pmt_v_list = torch.split(enc_pmt_v, self.encoder_embed_dim, dim=-1)
         else:
             dec_pmt_k = dec_pmt_v = None
 
@@ -847,8 +847,8 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             pmt_tok = kwargs.get('prompt')
             dec_pmt_k = encoder_out.dec_pmt_k
             dec_pmt_v = encoder_out.dec_pmt_v
-            dec_pmt_k_list = torch.split(dec_pmt_k, self.decoder_layers, dim=-1)
-            dec_pmt_v_list = torch.split(dec_pmt_v, self.decoder_layers, dim=-1)
+            dec_pmt_k_list = torch.split(dec_pmt_k, self.embed_dim, dim=-1)
+            dec_pmt_v_list = torch.split(dec_pmt_v, self.embed_dim, dim=-1)
         else:
             with_prompt = False
 
