@@ -452,7 +452,8 @@ class TransformerEncoder(FairseqEncoder):
 
         # compute padding mask
         encoder_padding_mask = src_tokens.eq(self.padding_idx)
-        prompt_padding_mask = pmt_tok.eq(self.padding_idx)
+        if with_prompt:
+            prompt_padding_mask = pmt_tok.eq(self.padding_idx)
 
         if with_prompt:
             pmt_k, pmt_v = self.adaptnet(pmt, pmt)
