@@ -454,6 +454,8 @@ class TransformerEncoder(FairseqEncoder):
         encoder_padding_mask = src_tokens.eq(self.padding_idx)
         if with_prompt:
             prompt_padding_mask = pmt_tok.eq(self.padding_idx)
+        else:
+            prompt_padding_mask = None
 
         if with_prompt:
             pmt_k, pmt_v = self.adaptnet(pmt, pmt)
@@ -912,6 +914,8 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             self_attn_padding_mask = prev_output_tokens.eq(self.padding_idx)
         if with_prompt:
             prompt_padding_mask = pmt_tok.eq(self.padding_idx)
+        else:
+            prompt_padding_mask = None
 
         # decoder layers
         attn: Optional[Tensor] = None
