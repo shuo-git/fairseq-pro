@@ -23,18 +23,18 @@ class AdaptNet(nn.Module):
         nn.init.xavier_uniform_(self.k_fc1.weight, gain=1 / math.sqrt(2))
         nn.init.xavier_uniform_(self.k_fc2.weight, gain=1 / math.sqrt(2))
         self.k_activation_fn = utils.get_activation_fn('gelu')
-        self.k_layer_norm = LayerNorm(args.encoder_embed_dim)
+        # self.k_layer_norm = LayerNorm(args.encoder_embed_dim)
 
         self.v_fc1 = nn.Linear(args.encoder_embed_dim, args.prompt_adapt_mid_dim, bias=bias)
         self.v_fc2 = nn.Linear(args.prompt_adapt_mid_dim, args.encoder_embed_dim * (args.encoder_layers + args.decoder_layers), bias=bias)
         nn.init.xavier_uniform_(self.v_fc1.weight, gain=1 / math.sqrt(2))
         nn.init.xavier_uniform_(self.v_fc2.weight, gain=1 / math.sqrt(2))
         self.v_activation_fn = utils.get_activation_fn('gelu')
-        self.v_layer_norm = LayerNorm(args.encoder_embed_dim)
+        # self.v_layer_norm = LayerNorm(args.encoder_embed_dim)
 
     def forward(self, k, v):
-        k = self.k_layer_norm(self.dropout_module(self.k_fc2(self.dropout_module(self.k_activation_fn(self.k_fc1(k))))))
-        v = self.v_layer_norm(self.dropout_module(self.v_fc2(self.dropout_module(self.v_activation_fn(self.v_fc1(v))))))
+        k = self.dropout_module(self.k_fc2(self.dropout_module(self.k_activation_fn(self.k_fc1(k)))))
+        v = self.dropout_module(self.v_fc2(self.dropout_module(self.v_activation_fn(self.v_fc1(v)))))
         return k, v
 
 
