@@ -12,6 +12,7 @@ from fairseq.modules import LayerNorm, MultiheadAttention
 from fairseq.modules.quant_noise import quant_noise
 from fairseq.modules.fairseq_dropout import FairseqDropout
 from torch import Tensor
+import math
 
 class AdaptNet(nn.Module):
     def __init__(self, args, bias=True):
