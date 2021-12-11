@@ -42,6 +42,7 @@ def load_langpair_dataset(
     truncate_source=False, append_source_id=False,
     num_buckets=0,
     shuffle=True,
+    target_key_sep=-1,
 ):
 
     def split_exists(split, src, tgt, lang, data_path):
@@ -129,6 +130,7 @@ def load_langpair_dataset(
         align_dataset=align_dataset, eos=eos,
         num_buckets=num_buckets,
         shuffle=shuffle,
+        target_key_sep=target_key_sep,
     )
 
 
@@ -216,6 +218,8 @@ class TranslationTask(LegacyFairseqTask):
                             help='if True, load pre-trained gpt2 from huggingface')
         parser.add_argument('--gpt2-setting', default='base',
                             choices=['base', 'medium', 'large', 'xlarge'])
+        # Added by Shuo
+        parser.add_argument('--target-key-sep', default=-1, type=int)
         # fmt: on
 
     def __init__(self, args, src_dict, tgt_dict):
@@ -280,6 +284,7 @@ class TranslationTask(LegacyFairseqTask):
             truncate_source=self.args.truncate_source,
             num_buckets=self.args.num_batch_buckets,
             shuffle=(split != 'test'),
+            target_key_sep=self.args.target_key_sep,
         )
 
     def build_dataset_for_inference(self, src_tokens, src_lengths, constraints=None):
