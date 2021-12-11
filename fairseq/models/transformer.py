@@ -463,7 +463,7 @@ class TransformerEncoder(FairseqEncoder):
         encoder_states = [] if return_all_hiddens else None
 
         # encoder layers
-        for idx, layer in enumerat(self.layers):
+        for idx, layer in enumerate(self.layers):
             if with_prompt:
                 temp_k = enc_pmt_k_list[idx]
                 temp_v = enc_pmt_v_list[idx]
