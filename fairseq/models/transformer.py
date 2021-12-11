@@ -223,7 +223,10 @@ class TransformerModel(FairseqEncoderDecoderModel):
             decoder_embed_tokens = encoder_embed_tokens
             args.share_decoder_input_output_embed = True
 
-            encoder_embed_prompt = cls.build_embedding(args, src_dict, args.encoder_embed_dim)
+            if args.forward_prompt:
+                encoder_embed_prompt = cls.build_embedding(args, src_dict, args.encoder_embed_dim)
+            else:
+                encoder_embed_prompt = None
         else:
             encoder_embed_tokens = cls.build_embedding(
                 args, src_dict, args.encoder_embed_dim, args.encoder_embed_path
