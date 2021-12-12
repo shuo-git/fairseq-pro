@@ -177,13 +177,17 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='if True, use word dropout on embedding layer of decoder')
         parser.add_argument('--word-dropout-prob', type=float, metavar='D', default=0,
                             help='word dropout probability')
-        
         # args added by Shuo
         parser.add_argument('--forward-prompt', default=False, action='store_true')
         parser.add_argument('--prompt-dropout', type=float, metavar='D')
         parser.add_argument('--prompt-adapt-mid-dim', type=int, metavar='D', default=512)
         parser.add_argument('--prompt-dec-self-attn', default=False, action='store_true')
         parser.add_argument('--prompt-dec-cross-attn', default=False, action='store_true')
+        parser.add_argument('--enc-tag-num', type=int, default=1)
+        parser.add_argument('--dec-tag-num', type=int, default=1)
+        parser.add_argument('--enc-tag-v1', default=False, action='store_true')
+        parser.add_argument('--enc-tag-v2', default=False, action='store_true')
+        parser.add_argument('--dec-tag-v1', default=False, action='store_true')
         # fmt: on
 
     @classmethod
@@ -331,6 +335,9 @@ class TransformerEncoder(FairseqEncoder):
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
         self.encoder_layerdrop = args.encoder_layerdrop
         self.forward_prompt = args.forward_prompt
+        self.enc_tag_num = args.enc_tag_num
+        self.enc_tag_v1 = args.enc_tag_v1
+        self.enc_tag_v2 = args.enc_tag_v2
         self.encoder_embed_dim = args.encoder_embed_dim
         self.encoder_layers = args.encoder_layers
 
@@ -434,26 +441,30 @@ class TransformerEncoder(FairseqEncoder):
                   hidden states of shape `(src_len, batch, embed_dim)`.
                   Only populated if *return_all_hiddens* is True.
         """
-        if not self.forward_prompt and kwargs.get('prompt', None) is not None:
-            src_tokens = torch.cat([kwargs.get('prompt'), src_tokens], dim=1)
+        if not self.forward_prompt and kwargs.get('src_prompt', None) is not None:
+            pmt_tok = kwargs.get('src_prompt')[:, :self.enc_tag_num]
+            if self.enc_tag_v1:
+                src_tokens = torch.cat([pmt_tok, src_tokens], dim=1)
         x, encoder_embedding = self.forward_embedding(src_tokens)
-        if kwargs.get('prompt', None) is not None and self.forward_prompt:
+        if kwargs.get('src_prompt', None) is not None and self.forward_prompt:
             with_prompt = True
-            pmt_tok = kwargs.get('prompt')
+            pmt_tok = kwargs.get('src_prompt')
         else:
             with_prompt = False
 
         if with_prompt:
             pmt, pmt_emb = self.forward_prompt_embedding(pmt_tok)
+        if self.enc_tag_v2:
+            pmt = self.forward_embedding(pmt_tok)
 
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
-        if with_prompt:
+        if with_prompt or self.enc_tag_v2:
             pmt = pmt.transpose(0, 1)
 
         # compute padding mask
         encoder_padding_mask = src_tokens.eq(self.padding_idx)
-        if with_prompt:
+        if with_prompt or self.enc_tag_v2:
             prompt_padding_mask = pmt_tok.eq(self.padding_idx)
         else:
             prompt_padding_mask = None
@@ -480,6 +491,9 @@ class TransformerEncoder(FairseqEncoder):
             else:
                 temp_k = None
                 temp_v = None
+            if self.enc_tag_v2:
+                temp_k = pmt
+                temp_v = pmt
             x = layer(
                 x,
                 encoder_padding_mask,
@@ -487,6 +501,11 @@ class TransformerEncoder(FairseqEncoder):
                 past_value=temp_v,
                 past_key_padding_mask=prompt_padding_mask,
             )
+            if self.enc_tag_v2:
+                pmt = layer(
+                    pmt,
+                    prompt_padding_mask
+                )
             if return_all_hiddens:
                 assert encoder_states is not None
                 encoder_states.append(x)
@@ -629,6 +648,8 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         self.embed_dim = embed_dim
         self.output_embed_dim = args.decoder_output_dim
         self.forward_prompt = args.forward_prompt
+        self.dec_tag_num = args.dec_tag_num
+        self.dec_tag_v1 = args.dec_tag_v1
         self.decoder_layers = args.decoder_layers
 
         self.padding_idx = embed_tokens.padding_idx
@@ -840,6 +861,10 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         if alignment_layer is None:
             alignment_layer = self.num_layers - 1
 
+        if self.dec_tag_v1 and kwargs.get('tgt_prompt', None) is not None:
+            pmt_tok = kwargs.get('tgt_prompt')[:, :self.dec_tag_num]
+            prev_output_tokens = torch.cat([pmt_tok, prev_output_tokens], dim=1)
+
         if prev_output_wil is not None:
             # Step1: align the lengths of tok and wil
             if not self.training:
@@ -854,9 +879,9 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             prev_output_wil = prev_output_wil % self.args.segment_embed_mod
             prev_output_wil[prev_output_tokens == self.padding_idx] = self.args.language_embedding_num
 
-        if kwargs.get('prompt', None) is not None and self.forward_prompt:
+        if kwargs.get('tgt_prompt', None) is not None and self.forward_prompt:
             with_prompt = True
-            pmt_tok = kwargs.get('prompt')
+            pmt_tok = kwargs.get('tgt_prompt')
             dec_pmt_k = encoder_out.dec_pmt_k
             dec_pmt_v = encoder_out.dec_pmt_v
             dec_pmt_k_list = torch.split(dec_pmt_k, self.embed_dim, dim=-1)

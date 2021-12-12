@@ -95,10 +95,14 @@ def collate(
     else:
         ntokens = src_lengths.sum().item()
 
-    prompt = None
-    if samples[0].get('prompt', None) is not None:
-        prompt = merge('prompt', left_pad=left_pad_source)
-        prompt = prompt.index_select(0, sort_order)
+    src_prompt = None
+    tgt_prompt = None
+    if samples[0].get('src_prompt', None) is not None:
+        src_prompt = merge('src_prompt', left_pad=left_pad_source)
+        src_prompt = src_prompt.index_select(0, sort_order)
+    if samples[0].get('tgt_prompt', None) is not None:
+        tgt_prompt = merge('tgt_prompt', left_pad=left_pad_target)
+        tgt_prompt = tgt_prompt.index_select(0, sort_order)
 
     batch = {
         'id': id,
@@ -112,8 +116,10 @@ def collate(
     }
     if prev_output_tokens is not None:
         batch['net_input']['prev_output_tokens'] = prev_output_tokens.index_select(0, sort_order)
-    if prompt is not None:
-        batch['net_input']['prompt'] = prompt
+    if src_prompt is not None:
+        batch['net_input']['src_prompt'] = src_prompt
+    if tgt_prompt is not None:
+        batch['net_input']['tgt_prompt'] = tgt_prompt
 
     if samples[0].get('alignment', None) is not None:
         bsz, tgt_sz = batch['target'].shape
@@ -296,15 +302,19 @@ class LanguagePairDataset(FairseqDataset):
         #     if self.src[index][-1] == eos:
         #         src_item = self.src[index][:-1]
         if self.target_key_sep > -1:
-            sep_idx = -1
+            sep_indices = []
             for my_idx, my_item in enumerate(tgt_item.tolist()):
                 if my_item == self.target_key_sep:
-                    sep_idx = my_idx
-            assert sep_idx > -1
-            prompt = tgt_item[:sep_idx]
-            tgt_item = tgt_item[sep_idx+1:]
+                    sep_indices.append(my_idx)
+                    if len(sep_indices) == 2:
+                        break
+            assert len(sep_indices) == 2
+            src_prompt = tgt_item[:sep_indices[0]]
+            tgt_prompt = tgt_item[sep_indices[0]+1:sep_indices[1]]
+            tgt_item = tgt_item[sep_indices[1]+1:]
         else:
-            prompt = None
+            src_prompt = None
+            tgt_prompt = None
         example = {
             'id': index,
             'source': src_item,
@@ -314,8 +324,10 @@ class LanguagePairDataset(FairseqDataset):
             example['alignment'] = self.align_dataset[index]
         if self.constraints is not None:
             example["constraints"] = self.constraints[index]
-        if prompt is not None:
-            example["prompt"] = prompt
+        if src_prompt is not None:
+            example["src_prompt"] = src_prompt
+        if tgt_prompt is not None:
+            example["tgt_prompt"] = tgt_prompt
         return example
 
     def __len__(self):
