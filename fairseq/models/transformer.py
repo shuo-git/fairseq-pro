@@ -177,6 +177,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='if True, use word dropout on embedding layer of decoder')
         parser.add_argument('--word-dropout-prob', type=float, metavar='D', default=0,
                             help='word dropout probability')
+        
         # args added by Shuo
         parser.add_argument('--forward-prompt', default=False, action='store_true')
         parser.add_argument('--prompt-dropout', type=float, metavar='D')
