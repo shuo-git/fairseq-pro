@@ -552,6 +552,8 @@ class TransformerEncoder(FairseqEncoder):
             for idx, state in enumerate(encoder_states):
                 encoder_states[idx] = state.index_select(1, new_order)
 
+        dec_pmt_k = encoder_out.dec_pmt_k
+        dec_pmt_v = encoder_out.dec_pmt_v
         if dec_pmt_k is not None and dec_pmt_v is not None:
             dec_pmt_k = dec_pmt_k.index_select(1, new_order)
             dec_pmt_v = dec_pmt_v.index_select(1, new_order)
