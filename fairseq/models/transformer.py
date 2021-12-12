@@ -455,7 +455,7 @@ class TransformerEncoder(FairseqEncoder):
         if with_prompt:
             pmt, pmt_emb = self.forward_prompt_embedding(pmt_tok)
         if self.enc_tag_v2:
-            pmt = self.forward_embedding(pmt_tok)
+            pmt, pmt_emb = self.forward_embedding(pmt_tok)
 
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
