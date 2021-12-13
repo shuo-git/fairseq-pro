@@ -989,7 +989,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         x = x.transpose(0, 1)
 
         if self.dec_tag_v1 and incremental_state is None:
-            x = x[:, 1:, :]
+            x = x[:, self.dec_tag_num:, :]
 
         if self.project_out_dim is not None:
             x = self.project_out_dim(x)
