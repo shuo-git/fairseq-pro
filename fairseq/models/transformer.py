@@ -861,6 +861,11 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         if alignment_layer is None:
             alignment_layer = self.num_layers - 1
 
+        if prev_output_tokens.size(1) == 1:
+            first_step = True
+        else:
+            first_step = False
+
         if self.dec_tag_v1 and kwargs.get('tgt_prompt', None) is not None:
             pmt_tok = kwargs.get('tgt_prompt')[:, :self.dec_tag_num]
             prev_output_tokens = torch.cat([pmt_tok, prev_output_tokens], dim=1)
@@ -903,7 +908,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         else:
             lang_indices = None
 
-        if incremental_state is not None and prev_output_tokens.size(1) > 2:
+        if incremental_state is not None and not first_step:
             prev_output_tokens = prev_output_tokens[:, -1:]
             if positions is not None:
                 positions = positions[:, -1:]
