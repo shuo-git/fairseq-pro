@@ -903,7 +903,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         else:
             lang_indices = None
 
-        if incremental_state is not None:
+        if incremental_state is not None and prev_output_tokens.size(1) > 2:
             prev_output_tokens = prev_output_tokens[:, -1:]
             if positions is not None:
                 positions = positions[:, -1:]
