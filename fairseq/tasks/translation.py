@@ -10,6 +10,7 @@ import logging
 import os
 from fairseq import options
 import numpy as np
+import torch
 
 from fairseq import metrics, utils
 from fairseq.data import (
