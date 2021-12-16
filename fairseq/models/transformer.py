@@ -415,7 +415,7 @@ class TransformerEncoder(FairseqEncoder):
         if self.prepend_tag:
             tags = kwargs.get('tags', None)
             assert tags is not None
-            x = torch.cat([tags, x], dim=1)
+            src_tokens = torch.cat([tags, src_tokens], dim=1)
         x, encoder_embedding = self.forward_embedding(src_tokens)
 
         # B x T x C -> T x B x C
