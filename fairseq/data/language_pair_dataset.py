@@ -311,6 +311,7 @@ class LanguagePairDataset(FairseqDataset):
             anchor = src_item[sep_indices[1]+1:]
             src_item = src_item[sep_indices[0]+1:sep_indices[1]]
             assert anchor.shape == src_item.shape
+            src_item =  torch.cat([tags, src_item])
         else:
             tags = anchor = None
 

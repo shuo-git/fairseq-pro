@@ -172,7 +172,6 @@ class TransformerModel(FairseqEncoderDecoderModel):
         parser.add_argument('--quant-noise-scalar', type=float, metavar='D', default=0,
                             help='scalar quantization noise and scalar quantization at training time')
         # args added in this branch
-        parser.add_argument('--prepend-tag', default=False, action='store_true')
         parser.add_argument('--additional-anchor-embedding', default=False, action='store_true')
         parser.add_argument('--use-anchor', default=False, action='store_true')
         # fmt: on
@@ -330,8 +329,6 @@ class TransformerEncoder(FairseqEncoder):
         self.padding_idx = embed_tokens.padding_idx
         self.max_source_positions = args.max_source_positions
 
-        self.prepend_tag = args.prepend_tag
-
         self.embed_tokens = embed_tokens
 
         self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
@@ -412,10 +409,6 @@ class TransformerEncoder(FairseqEncoder):
                   hidden states of shape `(src_len, batch, embed_dim)`.
                   Only populated if *return_all_hiddens* is True.
         """
-        if self.prepend_tag:
-            tags = kwargs.get('tags', None)
-            assert tags is not None
-            src_tokens = torch.cat([tags, src_tokens], dim=1)
         x, encoder_embedding = self.forward_embedding(src_tokens)
 
         # B x T x C -> T x B x C
