@@ -566,7 +566,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
 
         self.embed_tokens = embed_tokens
         self.anchor_embed = anchor_embed
-        self.use_anchor = args.anchor_embed
+        self.use_anchor = args.use_anchor
 
         self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
 
