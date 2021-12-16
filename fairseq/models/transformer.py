@@ -171,6 +171,10 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='block size of quantization noise at training time')
         parser.add_argument('--quant-noise-scalar', type=float, metavar='D', default=0,
                             help='scalar quantization noise and scalar quantization at training time')
+        # args added in this branch
+        parser.add_argument('--prepend-tag', default=False, action='store_true')
+        parser.add_argument('--additional-anchor-embedding', default=False, action='store_true')
+        parser.add_argument('--use-anchor', default=False, action='store_true')
         # fmt: on
 
     @classmethod
@@ -217,9 +221,17 @@ class TransformerModel(FairseqEncoderDecoderModel):
             decoder_embed_tokens = cls.build_embedding(
                 args, tgt_dict, args.decoder_embed_dim, args.decoder_embed_path
             )
+        if args.additional_anchor_embedding and args.use_anchor:
+            anchor_embed = cls.build_embedding(
+                args, tgt_dict, args.decoder_embed_dim
+            )
+        elif args.use_anchor:
+            anchor_embed = decoder_embed_tokens
+        else:
+            anchor_embed = None
 
         encoder = cls.build_encoder(args, src_dict, encoder_embed_tokens)
-        decoder = cls.build_decoder(args, tgt_dict, decoder_embed_tokens)
+        decoder = cls.build_decoder(args, tgt_dict, decoder_embed_tokens, anchor_embed)
         return cls(args, encoder, decoder)
 
     @classmethod
@@ -239,11 +251,12 @@ class TransformerModel(FairseqEncoderDecoderModel):
         return TransformerEncoder(args, src_dict, embed_tokens)
 
     @classmethod
-    def build_decoder(cls, args, tgt_dict, embed_tokens):
+    def build_decoder(cls, args, tgt_dict, embed_tokens, anchor_embed=None):
         return TransformerDecoder(
             args,
             tgt_dict,
             embed_tokens,
+            anchor_embed=anchor_embed,
             no_encoder_attn=getattr(args, "no_cross_attention", False),
         )
 
@@ -258,6 +271,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         features_only: bool = False,
         alignment_layer: Optional[int] = None,
         alignment_heads: Optional[int] = None,
+        **kwargs,
     ):
         """
         Run the forward pass for an encoder-decoder model.
@@ -266,7 +280,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         which are not supported by TorchScript.
         """
         encoder_out = self.encoder(
-            src_tokens, src_lengths=src_lengths, return_all_hiddens=return_all_hiddens
+            src_tokens, src_lengths=src_lengths, return_all_hiddens=return_all_hiddens, **kwargs,
         )
         decoder_out = self.decoder(
             prev_output_tokens,
@@ -276,6 +290,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
             alignment_heads=alignment_heads,
             src_lengths=src_lengths,
             return_all_hiddens=return_all_hiddens,
+            **kwargs,
         )
         return decoder_out
 
@@ -314,6 +329,8 @@ class TransformerEncoder(FairseqEncoder):
         embed_dim = embed_tokens.embedding_dim
         self.padding_idx = embed_tokens.padding_idx
         self.max_source_positions = args.max_source_positions
+
+        self.prepend_tag = args.prepend_tag
 
         self.embed_tokens = embed_tokens
 
@@ -373,7 +390,7 @@ class TransformerEncoder(FairseqEncoder):
             x = self.quant_noise(x)
         return x, embed
 
-    def forward(self, src_tokens, src_lengths, return_all_hiddens: bool = False):
+    def forward(self, src_tokens, src_lengths, return_all_hiddens: bool = False, **kwargs):
         """
         Args:
             src_tokens (LongTensor): tokens in the source language of shape
@@ -395,6 +412,10 @@ class TransformerEncoder(FairseqEncoder):
                   hidden states of shape `(src_len, batch, embed_dim)`.
                   Only populated if *return_all_hiddens* is True.
         """
+        if self.prepend_tag:
+            tags = kwargs.get('tags', None)
+            assert tags is not None
+            x = torch.cat([tags, x], dim=1)
         x, encoder_embedding = self.forward_embedding(src_tokens)
 
         # B x T x C -> T x B x C
@@ -525,7 +546,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             (default: False).
     """
 
-    def __init__(self, args, dictionary, embed_tokens, no_encoder_attn=False):
+    def __init__(self, args, dictionary, embed_tokens, anchor_embed=None, no_encoder_attn=False):
         self.args = args
         super().__init__(dictionary)
         self.register_buffer("version", torch.Tensor([3]))
@@ -544,6 +565,8 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         self.max_target_positions = args.max_target_positions
 
         self.embed_tokens = embed_tokens
+        self.anchor_embed = anchor_embed
+        self.use_anchor = anchor_embed
 
         self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
 
@@ -632,6 +655,14 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                 self.output_projection.weight, mean=0, std=self.output_embed_dim ** -0.5
             )
 
+        if self.use_anchor:
+            self.anchor_projection = nn.Linear(
+                self.anchor_embed.weight.shape[1],
+                self.anchor_embed.weight.shape[0],
+                bias=False,
+            )
+            self.anchor_projection.weight = self.anchor_embed.weight
+
     def build_decoder_layer(self, args, no_encoder_attn=False):
         return TransformerDecoderLayer(args, no_encoder_attn)
 
@@ -645,6 +676,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         alignment_heads: Optional[int] = None,
         src_lengths: Optional[Any] = None,
         return_all_hiddens: bool = False,
+        **kwargs,
     ):
         """
         Args:
@@ -668,9 +700,12 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             incremental_state=incremental_state,
             alignment_layer=alignment_layer,
             alignment_heads=alignment_heads,
+            **kwargs,
         )
         if not features_only:
             x = self.output_layer(x)
+            if self.use_anchor:
+                extra['enc_out'] = self.anchor_projection(encoder_out.encoder_out.transpose(0, 1))
         return x, extra
 
     def extract_features(
@@ -681,6 +716,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         full_context_alignment: bool = False,
         alignment_layer: Optional[int] = None,
         alignment_heads: Optional[int] = None,
+        **kwargs,
     ):
         return self.extract_features_scriptable(
             prev_output_tokens,
@@ -689,6 +725,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             full_context_alignment,
             alignment_layer,
             alignment_heads,
+            **kwargs,
         )
 
     """
@@ -705,6 +742,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         full_context_alignment: bool = False,
         alignment_layer: Optional[int] = None,
         alignment_heads: Optional[int] = None,
+        **kwargs,
     ):
         """
         Similar to *forward* but only return features.

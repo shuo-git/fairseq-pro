@@ -32,6 +32,28 @@ EVAL_BLEU_ORDER = 4
 logger = logging.getLogger(__name__)
 
 
+def parse_lambda_config(x):
+    """
+    Parse the configuration of lambda coefficient (for scheduling).
+    x = "3"                  # lambda will be a constant equal to x
+    x = "0:1,1000:0"         # lambda will start from 1 and linearly decrease
+                             # to 0 during the first 1000 iterations
+    x = "0:0,1000:0,2000:1"  # lambda will be equal to 0 for the first 1000
+                             # iterations, then will linearly increase to 1 until iteration 2000
+    """
+    if x is None:
+        return None, None
+    split = x.split(',')
+    if len(split) == 1:
+        return float(x), None
+    else:
+        split = [s.split(os.pathsep) for s in split]
+        assert all(len(s) == 2 for s in split)
+        assert all(k.isdigit() for k, _ in split)
+        assert all(int(split[i][0]) < int(split[i + 1][0]) for i in range(len(split) - 1))
+        return float(split[0][1]), [(int(k), float(v)) for k, v in split]
+
+
 def load_langpair_dataset(
     data_path, split,
     src, src_dict,
@@ -42,6 +64,7 @@ def load_langpair_dataset(
     truncate_source=False, append_source_id=False,
     num_buckets=0,
     shuffle=True,
+    data_sep=-1,
 ):
 
     def split_exists(split, src, tgt, lang, data_path):
@@ -129,6 +152,7 @@ def load_langpair_dataset(
         align_dataset=align_dataset, eos=eos,
         num_buckets=num_buckets,
         shuffle=shuffle,
+        data_sep=data_sep,
     )
 
 
@@ -204,12 +228,21 @@ class TranslationTask(LegacyFairseqTask):
                                  'e.g., \'{"beam": 4, "lenpen": 0.6}\'')
         parser.add_argument('--eval-bleu-print-samples', action='store_true',
                             help='print sample generations during validation')
+        # args added in this branch
+        parser.add_argument('--data-sep', default=-1, type=int)
+        parser.add_argument('--anchoring-loss-config', default=None, type=str, metavar='CONFIG',
+                                help='Anchoring loss weight'
+                                    'use fixed weight during training if set to floating point number. '
+                                    'use piecewise linear function over number of updates to schedule the '
+                                    'weight with the format: step0:w0,step1:w1,...')
         # fmt: on
 
     def __init__(self, args, src_dict, tgt_dict):
         super().__init__(args)
         self.src_dict = src_dict
         self.tgt_dict = tgt_dict
+
+        _, self.anchoring_loss_config = parse_lambda_config(args.anchoring_loss_config)
 
     @classmethod
     def setup_task(cls, args, **kwargs):
@@ -268,6 +301,7 @@ class TranslationTask(LegacyFairseqTask):
             truncate_source=self.args.truncate_source,
             num_buckets=self.args.num_batch_buckets,
             shuffle=(split != 'test'),
+            data_sep=self.args.data_sep,
         )
 
     def build_dataset_for_inference(self, src_tokens, src_lengths, constraints=None):
@@ -292,6 +326,35 @@ class TranslationTask(LegacyFairseqTask):
             gen_args = json.loads(getattr(args, 'eval_bleu_args', '{}') or '{}')
             self.sequence_generator = self.build_generator([model], Namespace(**gen_args))
         return model
+
+    def train_step(
+        self, sample, model, criterion, optimizer, update_num, ignore_grad=False
+    ):
+        def weight_step_func(config, n_iter):
+            ranges = [i for i in range(len(config) - 1) if config[i][0] <= n_iter < config[i + 1][0]]
+            if len(ranges) == 0:
+                assert n_iter >= config[-1][0]
+                return config[-1][1]
+            assert len(ranges) == 1
+            i = ranges[0]
+            x_a, y_a = config[i]
+            x_b, y_b = config[i + 1]
+            return y_a + (n_iter - x_a) * float(y_b - y_a) / float(x_b - x_a)
+        model.train()
+        model.set_num_updates(update_num)
+
+        if self.anchoring_loss_config is not None:
+            anchoring_loss_weight = weight_step_func(self.anchoring_loss_config, update_num)
+        else:
+            anchoring_loss_weight = None
+
+        with torch.autograd.profiler.record_function("forward"):
+            loss, sample_size, logging_output = criterion(model, sample, anchoring_loss_weight)
+        if ignore_grad:
+            loss *= 0
+        with torch.autograd.profiler.record_function("backward"):
+            optimizer.backward(loss)
+        return loss, sample_size, logging_output
 
     def valid_step(self, sample, model, criterion):
         loss, sample_size, logging_output = super().valid_step(sample, model, criterion)
