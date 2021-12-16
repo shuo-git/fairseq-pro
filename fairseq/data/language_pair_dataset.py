@@ -102,7 +102,7 @@ def collate(
         tags = tags.index_select(0, sort_order)
     if samples[0].get('anchor', None) is not None:
         anchor = merge('anchor', left_pad=left_pad_source)
-        anchor = tags.index_select(0, sort_order)
+        anchor = anchor.index_select(0, sort_order)
 
     batch = {
         'id': id,
