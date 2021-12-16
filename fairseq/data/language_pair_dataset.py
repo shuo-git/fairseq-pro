@@ -310,7 +310,7 @@ class LanguagePairDataset(FairseqDataset):
             tags = src_item[:sep_indices[0]]
             anchor = src_item[sep_indices[1]+1:]
             src_item = src_item[sep_indices[0]+1:sep_indices[1]]
-            # assert anchor.shape == src_item.shape
+            assert anchor.shape == src_item.shape
         else:
             tags = anchor = None
 
