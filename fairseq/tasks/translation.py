@@ -350,7 +350,7 @@ class TranslationTask(LegacyFairseqTask):
             anchoring_loss_weight = None
 
         with torch.autograd.profiler.record_function("forward"):
-            loss, sample_size, logging_output = criterion(model, sample, anchoring_loss_weight)
+            loss, sample_size, logging_output = criterion(model, sample, anchoring_loss_weight=anchoring_loss_weight)
         if ignore_grad:
             loss *= 0
         with torch.autograd.profiler.record_function("backward"):
