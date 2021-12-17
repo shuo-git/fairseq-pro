@@ -645,7 +645,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                     self.output_embed_dim, len(dictionary), bias=False
                 )
                 nn.init.normal_(
-                    self.anchor_projection.weight, mean=0， std=self.output_embed_dim ** -0.5
+                    self.anchor_projection.weight, mean=0, std=self.output_embed_dim ** -0.5
                 )
             else:
                 self.anchor_projection = nn.Linear(
