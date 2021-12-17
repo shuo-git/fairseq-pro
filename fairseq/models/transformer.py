@@ -220,17 +220,9 @@ class TransformerModel(FairseqEncoderDecoderModel):
             decoder_embed_tokens = cls.build_embedding(
                 args, tgt_dict, args.decoder_embed_dim, args.decoder_embed_path
             )
-        if args.additional_anchor_embedding and args.use_anchor:
-            anchor_embed = cls.build_embedding(
-                args, tgt_dict, args.decoder_embed_dim
-            )
-        elif args.use_anchor:
-            anchor_embed = decoder_embed_tokens
-        else:
-            anchor_embed = None
 
         encoder = cls.build_encoder(args, src_dict, encoder_embed_tokens)
-        decoder = cls.build_decoder(args, tgt_dict, decoder_embed_tokens, anchor_embed)
+        decoder = cls.build_decoder(args, tgt_dict, decoder_embed_tokens)
         return cls(args, encoder, decoder)
 
     @classmethod
@@ -250,12 +242,11 @@ class TransformerModel(FairseqEncoderDecoderModel):
         return TransformerEncoder(args, src_dict, embed_tokens)
 
     @classmethod
-    def build_decoder(cls, args, tgt_dict, embed_tokens, anchor_embed=None):
+    def build_decoder(cls, args, tgt_dict, embed_tokens):
         return TransformerDecoder(
             args,
             tgt_dict,
             embed_tokens,
-            anchor_embed=anchor_embed,
             no_encoder_attn=getattr(args, "no_cross_attention", False),
         )
 
@@ -539,7 +530,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             (default: False).
     """
 
-    def __init__(self, args, dictionary, embed_tokens, anchor_embed=None, no_encoder_attn=False):
+    def __init__(self, args, dictionary, embed_tokens, no_encoder_attn=False):
         self.args = args
         super().__init__(dictionary)
         self.register_buffer("version", torch.Tensor([3]))
@@ -558,8 +549,8 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         self.max_target_positions = args.max_target_positions
 
         self.embed_tokens = embed_tokens
-        self.anchor_embed = anchor_embed
         self.use_anchor = args.use_anchor
+        self.additional_anchor_embedding = args.additional_anchor_embedding
 
         self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
 
@@ -649,12 +640,20 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             )
 
         if self.use_anchor:
-            self.anchor_projection = nn.Linear(
-                self.anchor_embed.weight.shape[1],
-                self.anchor_embed.weight.shape[0],
-                bias=False,
-            )
-            self.anchor_projection.weight = self.anchor_embed.weight
+            if self.additional_anchor_embedding:
+                self.anchor_projection = nn.Linear(
+                    self.output_embed_dim, len(dictionary), bias=False
+                )
+                nn.init.normal_(
+                    self.anchor_projection.weight, mean=0， std=self.output_embed_dim ** -0.5
+                )
+            else:
+                self.anchor_projection = nn.Linear(
+                    self.embed_tokens.weight.shape[1],
+                    self.embed_tokens.weight.shape[0],
+                    bias=False,
+                )
+                self.anchor_projection.weight = self.embed_tokens.weight
 
     def build_decoder_layer(self, args, no_encoder_attn=False):
         return TransformerDecoderLayer(args, no_encoder_attn)
