@@ -313,6 +313,11 @@ class LanguagePairDataset(FairseqDataset):
             src_item =  torch.cat([tags, src_item])
             pad = self.src_dict.pad()
             anchor = torch.cat([torch.LongTensor([pad]), anchor, torch.LongTensor([pad])])
+            if anchor.shape != src_item.shape:
+                eos = self.src_dict.eos()
+                src_item = torch.cat([tags, torch.LongTensor([eos])])
+                tgt_item = torch.LongTensor([eos])
+                anchor = torch.LongTensor([pad, pad])
         else:
             tags = anchor = None
 
