@@ -65,7 +65,7 @@ class LabelSmoothedCrossEntropyAnchorCriterion(FairseqCriterion):
         net_output = model(**sample['net_input'])
         loss, nll_loss = self.compute_loss(model, net_output[0], sample['target'], reduce=reduce)
 
-        if anchoring_loss_weight is not None:
+        if anchoring_loss_weight is not None and net_output[1].get('enc_out', None) is not None:
             anchoring_loss, _ = self.compute_loss(
                     model,
                     net_output[1]['enc_out'],
