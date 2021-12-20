@@ -310,11 +310,9 @@ class LanguagePairDataset(FairseqDataset):
             tags = src_item[:sep_indices[0]]
             anchor = src_item[sep_indices[0]+1:sep_indices[1]]
             src_item = src_item[sep_indices[1]+1:]
-            pad = self.src_dict.pad()
-            anchor = torch.cat([anchor, torch.LongTensor([pad])])
             src_item =  torch.cat([tags, src_item])
-            anchor = torch.cat([torch.LongTensor([pad]), anchor])
-            assert anchor.shape == src_item.shape
+            pad = self.src_dict.pad()
+            anchor = torch.cat([torch.LongTensor([pad]), anchor, torch.LongTensor([pad])])
         else:
             tags = anchor = None
 
