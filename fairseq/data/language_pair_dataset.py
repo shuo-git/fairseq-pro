@@ -456,7 +456,7 @@ class LanguagePairDataset(FairseqDataset):
             list: list of removed indices
         """
         return data_utils.filter_paired_dataset_indices_by_size(
-            self.src_sizes,
+            self.tgt_sizes,
             self.tgt_sizes,
             indices,
             max_sizes,
