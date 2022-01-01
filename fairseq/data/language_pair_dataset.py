@@ -401,7 +401,7 @@ class LanguagePairDataset(FairseqDataset):
         """Return the number of tokens in a sample. This value is used to
         enforce ``--max-tokens`` during batching."""
         if self.data_sep > -1:
-            src_size = (self.src_sizes[index] - 1) / 2
+            src_size = self.src_sizes[index] / 2
         else:
             src_size = self.src_sizes[index]
         return max(src_size, self.tgt_sizes[index] if self.tgt_sizes is not None else 0)
