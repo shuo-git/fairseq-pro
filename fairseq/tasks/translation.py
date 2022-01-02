@@ -301,9 +301,10 @@ class TranslationTask(LegacyFairseqTask):
             load_alignments=self.args.load_alignments,
             truncate_source=self.args.truncate_source,
             num_buckets=self.args.num_batch_buckets,
-            shuffle=(split != 'test'),
+            shuffle=False,
             data_sep=self.args.data_sep,
         )
+        # shuffle=(split != 'test'),
 
     def build_dataset_for_inference(self, src_tokens, src_lengths, constraints=None):
         return LanguagePairDataset(src_tokens, src_lengths, self.source_dictionary,
