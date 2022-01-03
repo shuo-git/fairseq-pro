@@ -328,6 +328,8 @@ class LanguagePairDataset(FairseqDataset):
                 anchor = torch.LongTensor([pad])
             if self.dec_lang_tag:
                 prev_tgt_item = torch.cat([tags, tgt_item[:-1]])
+            else:
+                prev_tgt_item = None
         else:
             prev_tgt_item = tags = anchor = None
 
