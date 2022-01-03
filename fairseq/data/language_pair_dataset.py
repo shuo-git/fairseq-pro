@@ -115,7 +115,8 @@ def collate(
         'target': target,
     }
     if prev_output_tokens is not None:
-        batch['net_input']['prev_output_tokens'] = prev_output_tokens.index_select(0, sort_order)
+        prev_output_tokens = prev_output_tokens.index_select(0, sort_order)
+        batch['net_input']['prev_output_tokens'] = prev_output_tokens
     if tags is not None:
         batch['net_input']['tags'] = tags
     if anchor is not None:
@@ -211,6 +212,8 @@ class LanguagePairDataset(FairseqDataset):
         src_lang_id=None,
         tgt_lang_id=None,
         data_sep=-1,
+        enc_lang_tag=False,
+        dec_lang_tag=False,
     ):
         if tgt_dict is not None:
             assert src_dict.pad() == tgt_dict.pad()
@@ -240,6 +243,8 @@ class LanguagePairDataset(FairseqDataset):
         self.src_lang_id = src_lang_id
         self.tgt_lang_id = tgt_lang_id
         self.data_sep = data_sep
+        self.enc_lang_tag = enc_lang_tag
+        self.dec_lang_tag = dec_lang_tag
         if num_buckets > 0:
             from fairseq.data import BucketPadLengthDataset
             self.src = BucketPadLengthDataset(
@@ -310,16 +315,21 @@ class LanguagePairDataset(FairseqDataset):
             tags = src_item[:sep_indices[0]]
             anchor = src_item[sep_indices[0]+1:sep_indices[1]]
             src_item = src_item[sep_indices[1]+1:]
-            src_item =  torch.cat([tags, src_item])
             pad = self.src_dict.pad()
-            anchor = torch.cat([torch.LongTensor([pad]), anchor, torch.LongTensor([pad])])
+            eos = self.src_dict.eos()
+            if self.enc_lang_tag:
+                src_item =  torch.cat([tags, src_item])
+                anchor = torch.cat([torch.LongTensor([pad]), anchor, torch.LongTensor([pad])])
+            else:
+                anchor = torch.cat([anchor, torch.LongTensor([pad])])
             if anchor.shape != src_item.shape:
-                eos = self.src_dict.eos()
-                src_item = torch.cat([tags, torch.LongTensor([eos])])
+                src_item = torch.LongTensor([eos])
                 tgt_item = torch.LongTensor([eos])
-                anchor = torch.LongTensor([pad, pad])
+                anchor = torch.LongTensor([pad])
+            if self.dec_lang_tag:
+                prev_tgt_item = torch.cat([tags, tgt_item[:-1]])
         else:
-            tags = anchor = None
+            prev_tgt_item = tags = anchor = None
 
         example = {
             'id': index,
@@ -334,6 +344,8 @@ class LanguagePairDataset(FairseqDataset):
             example['tags'] = tags
         if anchor is not None:
             example['anchor'] = anchor
+        if prev_tgt_item is not None:
+            example['prev_output_tokens'] = prev_tgt_item
         return example
 
     def __len__(self):
