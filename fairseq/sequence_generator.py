@@ -238,7 +238,8 @@ class SequenceGenerator(nn.Module):
             .long()
             .fill_(self.pad)
         )  # +2 for eos and pad
-        tokens[:, 0] = self.eos if bos_token is None else bos_token
+        # tokens[:, 0] = self.eos if bos_token is None else bos_token
+        tokens[:, 0] = net_input['prev_output_tokens'][0][0].item()
         attn: Optional[Tensor] = None
 
         # A list that indicates candidates that should be ignored.
