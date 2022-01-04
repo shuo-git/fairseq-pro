@@ -212,8 +212,8 @@ class LanguagePairDataset(FairseqDataset):
         src_lang_id=None,
         tgt_lang_id=None,
         data_sep=-1,
-        enc_lang_tag=False,
-        dec_lang_tag=False,
+        enc_lang_tag='none',
+        dec_lang_tag='none',
     ):
         if tgt_dict is not None:
             assert src_dict.pad() == tgt_dict.pad()
@@ -317,7 +317,7 @@ class LanguagePairDataset(FairseqDataset):
             src_item = src_item[sep_indices[1]+1:]
             pad = self.src_dict.pad()
             eos = self.src_dict.eos()
-            if self.enc_lang_tag:
+            if self.enc_lang_tag == 'v1':
                 src_item =  torch.cat([tags, src_item])
                 anchor = torch.cat([torch.LongTensor([pad]), anchor, torch.LongTensor([pad])])
             else:
@@ -326,10 +326,12 @@ class LanguagePairDataset(FairseqDataset):
                 src_item = torch.LongTensor([eos])
                 tgt_item = torch.LongTensor([eos])
                 anchor = torch.LongTensor([pad])
-            if self.dec_lang_tag:
+            if self.dec_lang_tag == 'v1':
                 prev_tgt_item = torch.cat([tags, tgt_item[:-1]])
             else:
                 prev_tgt_item = None
+            if self.dec_lang_tag == 'v2':
+                tgt_item = torch.cat([tags, tgt_item])
         else:
             prev_tgt_item = tags = anchor = None
 

@@ -66,8 +66,8 @@ def load_langpair_dataset(
     num_buckets=0,
     shuffle=True,
     data_sep=-1,
-    enc_lang_tag=False,
-    dec_lang_tag=False,
+    enc_lang_tag='none',
+    dec_lang_tag='none',
 ):
 
     def split_exists(split, src, tgt, lang, data_path):
@@ -240,8 +240,8 @@ class TranslationTask(LegacyFairseqTask):
                                     'use fixed weight during training if set to floating point number. '
                                     'use piecewise linear function over number of updates to schedule the '
                                     'weight with the format: step0:w0,step1:w1,...')
-        parser.add_argument('--enc-lang-tag', default=False, action='store_true')
-        parser.add_argument('--dec-lang-tag', default=False, action='store_true')
+        parser.add_argument('--enc-lang-tag', default='none', help='none, v1')
+        parser.add_argument('--dec-lang-tag', default='none', help='none, v1, v2')
         # fmt: on
 
     def __init__(self, args, src_dict, tgt_dict):
