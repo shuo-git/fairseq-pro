@@ -758,6 +758,16 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         if alignment_layer is None:
             alignment_layer = self.num_layers - 1
 
+        if prev_output_tokens.size(1) == 1:
+            first_step = True
+        else:
+            first_step = False
+
+        if self.args.dec_lang_tag == 'v3':
+            tags = kwargs.get('tags', None)
+            assert tags is not None
+            prev_output_tokens = torch.cat([tags, prev_output_tokens], dim=1)
+
         # embed positions
         positions = (
             self.embed_positions(
@@ -767,7 +777,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             else None
         )
 
-        if incremental_state is not None:
+        if incremental_state is not None and not first_step:
             prev_output_tokens = prev_output_tokens[:, -1:]
             if positions is not None:
                 positions = positions[:, -1:]
@@ -831,6 +841,12 @@ class TransformerDecoder(FairseqIncrementalDecoder):
 
         # T x B x C -> B x T x C
         x = x.transpose(0, 1)
+
+        if self.args.dec_lang_tag == 'v3':
+            if incremental_state is None:
+                x = x[:, 1:, :]
+            else:
+                x = x[:, -1:, :]
 
         if self.project_out_dim is not None:
             x = self.project_out_dim(x)

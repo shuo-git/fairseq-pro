@@ -180,6 +180,7 @@ class SequenceGenerator(nn.Module):
             ],
         )
         net_input = sample["net_input"]
+        tags = sample['net_input'].get('tags', None)
 
         if 'src_tokens' in net_input:
             src_tokens = net_input['src_tokens']
@@ -225,6 +226,8 @@ class SequenceGenerator(nn.Module):
         new_order = torch.arange(bsz).view(-1, 1).repeat(1, beam_size).view(-1)
         new_order = new_order.to(src_tokens.device).long()
         encoder_outs = self.model.reorder_encoder_out(encoder_outs, new_order)
+        if tags is not None:
+            tags = tags.index_select(0, new_order)
         # ensure encoder_outs is a List.
         assert encoder_outs is not None
 
@@ -286,12 +289,15 @@ class SequenceGenerator(nn.Module):
                 encoder_outs = self.model.reorder_encoder_out(
                     encoder_outs, reorder_state
                 )
+                if tags is not None:
+                    tags = tags.index_select(0, reorder_state)
 
             lprobs, avg_attn_scores = self.model.forward_decoder(
                 tokens[:, : step + 1],
                 encoder_outs,
                 incremental_states,
                 self.temperature,
+                tags=tags,
             )
             lprobs[lprobs != lprobs] = torch.tensor(-math.inf).to(lprobs)
 
@@ -772,6 +778,7 @@ class EnsembleModel(nn.Module):
         encoder_outs: List[EncoderOut],
         incremental_states: List[Dict[str, Dict[str, Optional[Tensor]]]],
         temperature: float = 1.0,
+        tags: Tensor = None,
     ):
         log_probs = []
         avg_attn: Optional[Tensor] = None
@@ -785,9 +792,14 @@ class EnsembleModel(nn.Module):
                     tokens,
                     encoder_out=encoder_out,
                     incremental_state=incremental_states[i],
+                    tags=tags,
                 )
             else:
-                decoder_out = model.decoder.forward(tokens, encoder_out=encoder_out)
+                decoder_out = model.decoder.forward(
+                    tokens,
+                    encoder_out=encoder_out,
+                    tags=tags,
+                )
 
             attn: Optional[Tensor] = None
             decoder_len = len(decoder_out)
