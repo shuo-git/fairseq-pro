@@ -150,6 +150,8 @@ def _main(args, output_file):
         prefix_tokens = None
         if args.prefix_size > 0:
             prefix_tokens = sample['target'][:, :args.prefix_size]
+            prefix_eos_mask = prefix_tokens.eq(tgt_dict.eos())
+            prefix_tokens[prefix_eos_mask] = tgt_dict.pad()
 
         constraints = None
         if "constraints" in sample:
