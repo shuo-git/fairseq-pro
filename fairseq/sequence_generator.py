@@ -180,7 +180,14 @@ class SequenceGenerator(nn.Module):
             ],
         )
         net_input = sample["net_input"]
-
+        if sample[0].get('open_tag', None) is not None:
+            assert sample[0].get('close_tag', None) is not None
+            open_tag = sample['open_tag']
+            close_tag = sample['close_tag']
+            scd = True
+        else:
+            csd = False
+            open_tag = close_tag = None
         if 'src_tokens' in net_input:
             src_tokens = net_input['src_tokens']
             # length of the source text being the character length except EndOfSentence and pad
@@ -225,6 +232,9 @@ class SequenceGenerator(nn.Module):
         new_order = torch.arange(bsz).view(-1, 1).repeat(1, beam_size).view(-1)
         new_order = new_order.to(src_tokens.device).long()
         encoder_outs = self.model.reorder_encoder_out(encoder_outs, new_order)
+        if scd:
+            open_tag = open_tag.index_select(0, new_order)
+            close_tag = close_tag.index_select(0, new_order)
         # ensure encoder_outs is a List.
         assert encoder_outs is not None
 
@@ -238,6 +248,26 @@ class SequenceGenerator(nn.Module):
             .long()
             .fill_(self.pad)
         )  # +2 for eos and pad
+        tagTypeList = ['ph', 'xref', 'uicontrol', 'b', 'codeph', 'parmname', 'i', 'title',
+                'menucascade', 'varname', 'userinput', 'filepath', 'term',
+                'systemoutput', 'cite', 'li', 'ul', 'p', 'note', 'indexterm', 'u', 'fn']
+        tagBegList = ['<'+t+'>' for t in tagTypeList]
+        tagEndList = ['</'+t+'>' for t in tagTypeList]
+        tag_possible = []
+        tag_history = []
+
+        def reorder_list(ipt_list, ipt_order):
+            res_list = []
+            for _i in ipt_order:
+                res_list.append(ipt_list[_i])
+            return res_list
+
+        for _ in range(bsz * beam_size):
+            tag_possible.append([])
+            tag_history.append([])
+            for tag_iter in tagTypeList:
+                if self.tgt_dict.index(f"<{tag_iter}>") in open_tag.tolist():
+                    tag_possible[-1].append(tag_iter)
         tokens[:, 0] = self.eos if bos_token is None else bos_token
         attn: Optional[Tensor] = None
 
@@ -285,6 +315,8 @@ class SequenceGenerator(nn.Module):
                 encoder_outs = self.model.reorder_encoder_out(
                     encoder_outs, reorder_state
                 )
+                tag_possible = reorder_list(tag_possible, reorder_state.tolist())
+                tag_history = reorder_list(tag_history, reorder_state.tolist())
 
             lprobs, avg_attn_scores = self.model.forward_decoder(
                 tokens[:, : step + 1],
@@ -296,6 +328,22 @@ class SequenceGenerator(nn.Module):
 
             lprobs[:, self.pad] = -math.inf  # never select pad
             lprobs[:, self.unk] -= self.unk_penalty  # apply unk penalty
+
+            # Added for structured constrained decoding
+            my_num_sen = lprobs.shape[0]
+            assert len(tag_possible) == my_num_sen
+            assert len(tag_history) == my_num_sen
+            for my_idx in range(my_num_sen):
+                for tag_iter in tagTypeList:
+                    if tag_iter not in tag_possible[my_idx]:
+                        temp_id = self.tgtdict.index(f"<{tag_iter}>")
+                        lprobs[my_idx][temp_id] = -math.inf
+                    if len(tag_history[my_idx]) == 0 or tag_iter != tag_history[my_idx][-1]:
+                        temp_id = self.tgtdict.index(f"</{tag_iter}>")
+                        lprobs[my_idx][temp_id] = -math.inf
+                    if len(tag_possible[my_idx]) > 0 or len(tag_history[my_idx]) > 0:
+                        lprobs[my_idx][self.eos] = -math.inf
+
 
             # handle max length constraint
             if step >= max_len:

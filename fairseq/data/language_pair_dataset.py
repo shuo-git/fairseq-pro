@@ -68,6 +68,15 @@ def collate(
     id = id.index_select(0, sort_order)
     src_tokens = src_tokens.index_select(0, sort_order)
 
+    open_tag = None
+    close_tag = None
+    if samples[0].get('open_tag', None) is not None:
+        open_tag = merge('open_tag', left_pad=True)
+        close_tag = merge('close_tag', left_pad=True)
+        open_tag = open_tag.index_select(0, sort_order)
+        close_tag = close_tag.index_select(0, sort_order)
+        tag_lengths = torch.LongTensor([s['open_tag'].ne(pad_idx).long().sum() for s in samples]).index_select(0, sort_order)
+
     prev_output_tokens = None
     target = None
     if samples[0].get('target', None) is not None:
@@ -107,6 +116,11 @@ def collate(
     }
     if prev_output_tokens is not None:
         batch['net_input']['prev_output_tokens'] = prev_output_tokens.index_select(0, sort_order)
+
+    if open_tag is not None and close_tag is not None:
+        batch['open_tag'] = open_tag
+        batch['close_tag'] = close_tag
+        batch['tag_lengths'] = tag_lengths
 
     if samples[0].get('alignment', None) is not None:
         bsz, tgt_sz = batch['target'].shape
@@ -197,6 +211,7 @@ class LanguagePairDataset(FairseqDataset):
         num_buckets=0,
         src_lang_id=None,
         tgt_lang_id=None,
+        target_key_sep=-1,
     ):
         if tgt_dict is not None:
             assert src_dict.pad() == tgt_dict.pad()
@@ -225,6 +240,7 @@ class LanguagePairDataset(FairseqDataset):
         self.eos = (eos if eos is not None else src_dict.eos())
         self.src_lang_id = src_lang_id
         self.tgt_lang_id = tgt_lang_id
+        self.target_key_sep = target_key_sep
         if num_buckets > 0:
             from fairseq.data import BucketPadLengthDataset
             self.src = BucketPadLengthDataset(
@@ -287,6 +303,32 @@ class LanguagePairDataset(FairseqDataset):
             if self.src[index][-1] == eos:
                 src_item = self.src[index][:-1]
 
+        if self.target_key_sep > -1:
+            sep_idx_1 = -1
+            sep_idx_2 = -1
+            for idx, elm in enumerate(src_item.tolist()):
+                if elm == self.target_key_sep:
+                    if sep_idx_1 == -1:
+                        sep_idx_1 = idx
+                    elif sep_idx_2 == -1:
+                        sep_idx_2 = idx
+                        break
+            assert sep_idx_1 >=0 and sep_idx_2 >=0 and sep_idx_2 > sep_idx_1
+            pad = self.src_dict.pad()
+            if sep_idx_2 > sep_idx_1 + 1:
+                open_tag = src_item[sep_idx_1 + 1: sep_idx_2]
+                close_tag = src_item[sep_idx_2 + 1:]
+                assert open_tag.shape[0] == close_tag.shape[0]
+                open_tag = torch.cat([torch.LongTensor([pad]), open_tag])
+                close_tag = torch.cat([torch.LongTensor([pad]), close_tag])
+            else:
+                open_tag = torch.LongTensor([pad])
+                close_tag = torch.LongTensor([pad])
+            src_item = src_item[: sep_idx_1]
+        else:
+            open_tag = None
+            close_tag = None
+
         example = {
             'id': index,
             'source': src_item,
@@ -296,6 +338,9 @@ class LanguagePairDataset(FairseqDataset):
             example['alignment'] = self.align_dataset[index]
         if self.constraints is not None:
             example["constraints"] = self.constraints[index]
+        if self.open_tag is not None and self.close_tag is not None:
+            example["open_tag"] = open_tag
+            example["close_tag"] = close_tag
         return example
 
     def __len__(self):

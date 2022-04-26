@@ -42,6 +42,7 @@ def load_langpair_dataset(
     truncate_source=False, append_source_id=False,
     num_buckets=0,
     shuffle=True,
+    target_key_sep=-1,
 ):
 
     def split_exists(split, src, tgt, lang, data_path):
@@ -129,6 +130,7 @@ def load_langpair_dataset(
         align_dataset=align_dataset, eos=eos,
         num_buckets=num_buckets,
         shuffle=shuffle,
+        target_key_sep=target_key_sep,
     )
 
 
@@ -204,6 +206,8 @@ class TranslationTask(LegacyFairseqTask):
                                  'e.g., \'{"beam": 4, "lenpen": 0.6}\'')
         parser.add_argument('--eval-bleu-print-samples', action='store_true',
                             help='print sample generations during validation')
+        # Added for structurally constrained decoding
+        parser.add_argument('--target-key-sep', type=int, default=-1)
         # fmt: on
 
     def __init__(self, args, src_dict, tgt_dict):
@@ -268,6 +272,7 @@ class TranslationTask(LegacyFairseqTask):
             truncate_source=self.args.truncate_source,
             num_buckets=self.args.num_batch_buckets,
             shuffle=(split != 'test'),
+            target_key_sep=self.args.target_key_sep,
         )
 
     def build_dataset_for_inference(self, src_tokens, src_lengths, constraints=None):
