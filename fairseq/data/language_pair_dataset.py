@@ -197,6 +197,7 @@ class LanguagePairDataset(FairseqDataset):
         num_buckets=0,
         src_lang_id=None,
         tgt_lang_id=None,
+        dataset_offsets=None
     ):
         if tgt_dict is not None:
             assert src_dict.pad() == tgt_dict.pad()
@@ -225,6 +226,7 @@ class LanguagePairDataset(FairseqDataset):
         self.eos = (eos if eos is not None else src_dict.eos())
         self.src_lang_id = src_lang_id
         self.tgt_lang_id = tgt_lang_id
+        self.dataset_offsets = dataset_offsets
         if num_buckets > 0:
             from fairseq.data import BucketPadLengthDataset
             self.src = BucketPadLengthDataset(
@@ -367,7 +369,12 @@ class LanguagePairDataset(FairseqDataset):
     def size(self, index):
         """Return an example's size as a float or tuple. This value is used when
         filtering a dataset with ``--max-positions``."""
-        return (self.src_sizes[index], self.tgt_sizes[index] if self.tgt_sizes is not None else 0)
+        if self.dataset_offsets is not None:
+            cur_src_size = max(self.src_sizes[index] - self.dataset_offsets[0], 1)
+            cur_tgt_size = max(self.tgt_sizes[index] - self.dataset_offsets[1], 1)
+            return (cur_src_size, cur_tgt_size)
+        else:
+            return (self.src_sizes[index], self.tgt_sizes[index] if self.tgt_sizes is not None else 0)
 
     def ordered_indices(self):
         """Return an ordered list of indices. Batches will be constructed based

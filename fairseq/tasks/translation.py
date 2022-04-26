@@ -42,6 +42,7 @@ def load_langpair_dataset(
     truncate_source=False, append_source_id=False,
     num_buckets=0,
     shuffle=True,
+    dataset_offsets=None,
 ):
 
     def split_exists(split, src, tgt, lang, data_path):
@@ -129,6 +130,7 @@ def load_langpair_dataset(
         align_dataset=align_dataset, eos=eos,
         num_buckets=num_buckets,
         shuffle=shuffle,
+        dataset_offsets=dataset_offsets,
     )
 
 
@@ -204,6 +206,9 @@ class TranslationTask(LegacyFairseqTask):
                                  'e.g., \'{"beam": 4, "lenpen": 0.6}\'')
         parser.add_argument('--eval-bleu-print-samples', action='store_true',
                             help='print sample generations during validation')
+        # Added Parameters for Balanced Batching
+        parser.add_argument('--src-dataset-offset', default=0, type=int)
+        parser.add_argument('--tgt-dataset-offset', default=0, type=int)
         # fmt: on
 
     def __init__(self, args, src_dict, tgt_dict):
@@ -268,6 +273,7 @@ class TranslationTask(LegacyFairseqTask):
             truncate_source=self.args.truncate_source,
             num_buckets=self.args.num_batch_buckets,
             shuffle=(split != 'test'),
+            dataset_offsets=(self.args.src_dataset_offset, self.args.tgt_dataset_offset),
         )
 
     def build_dataset_for_inference(self, src_tokens, src_lengths, constraints=None):
