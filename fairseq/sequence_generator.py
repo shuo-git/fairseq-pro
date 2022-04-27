@@ -186,7 +186,7 @@ class SequenceGenerator(nn.Module):
             close_tag = sample['close_tag']
             scd = True
         else:
-            csd = False
+            scd = False
             open_tag = close_tag = None
         if 'src_tokens' in net_input:
             src_tokens = net_input['src_tokens']
