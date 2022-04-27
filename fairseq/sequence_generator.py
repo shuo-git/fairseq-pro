@@ -479,7 +479,7 @@ class SequenceGenerator(nn.Module):
                         temp_end = (temp_idx + 1) * bsz
                         new_tag_possible.extend(tag_possible[temp_start:temp_end])
                         new_tag_history.extend(tag_history[temp_start:temp_end])
-                        new_tag_exist.extend[tag_exist[temp_start:temp_end]]
+                        new_tag_exist.extend(tag_exist[temp_start:temp_end])
                     tag_possible = new_tag_possible
                     tag_history = new_tag_history
                     tag_exist = new_tag_exist
