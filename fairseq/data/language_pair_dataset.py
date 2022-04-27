@@ -338,7 +338,7 @@ class LanguagePairDataset(FairseqDataset):
             example['alignment'] = self.align_dataset[index]
         if self.constraints is not None:
             example["constraints"] = self.constraints[index]
-        if self.open_tag is not None and self.close_tag is not None:
+        if open_tag is not None and close_tag is not None:
             example["open_tag"] = open_tag
             example["close_tag"] = close_tag
         return example
