@@ -315,8 +315,6 @@ class SequenceGenerator(nn.Module):
                 encoder_outs = self.model.reorder_encoder_out(
                     encoder_outs, reorder_state
                 )
-                tag_possible = reorder_list(tag_possible, reorder_state.tolist())
-                tag_history = reorder_list(tag_history, reorder_state.tolist())
 
             lprobs, avg_attn_scores = self.model.forward_decoder(
                 tokens[:, : step + 1],
@@ -463,6 +461,15 @@ class SequenceGenerator(nn.Module):
 
                 scores = scores.view(bsz, -1)[batch_idxs].view(new_bsz * beam_size, -1)
                 tokens = tokens.view(bsz, -1)[batch_idxs].view(new_bsz * beam_size, -1)
+                new_tag_possible = []
+                new_tag_history = []
+                for temp_idx in batch_idxs.tolist():
+                    temp_start = temp_idx * bsz
+                    temp_end = (temp_idx + 1) * bsz
+                    new_tag_possible.extend(tag_possible[temp_start:temp_end])
+                    new_tag_history.extend(tag_history[temp_start:temp_end])
+                tag_possible = new_tag_possible
+                tag_history = new_tag_history
                 if attn is not None:
                     attn = attn.view(bsz, -1)[batch_idxs].view(
                         new_bsz * beam_size, attn.size(1), -1
@@ -513,10 +520,23 @@ class SequenceGenerator(nn.Module):
             tokens[:, : step + 1] = torch.index_select(
                 tokens[:, : step + 1], dim=0, index=active_bbsz_idx
             )
+            tag_possible = reorder_list(tag_possible, active_bbsz_idx.tolist())
+            tag_history = reorder_list(tag_history, active_bbsz_idx.tolist())
             # Select the next token for each of them
-            tokens.view(bsz, beam_size, -1)[:, :, step + 1] = torch.gather(
-                cand_indices, dim=1, index=active_hypos
-            )
+            temp_next_token = torch.gather(cand_indices, dim=1, index=active_hypos)
+            tokens.view(bsz, beam_size, -1)[:, :, step + 1] = temp_next_token
+            for nt_idx, nt in enumerate(temp_next_token.view(bsz * beam_size).tolist()):
+                nt_str = self.tgtdict[nt]
+                if nt_str in tagBegList:
+                    nt_tag_type = nt_str[1:-1]
+                    assert nt_tag_type in tag_possible[nt_idx]
+                    nt_tag_idx = tag_possible[nt_idx].index(nt_tag_type)
+                    tag_possible[nt_idx].pop(nt_tag_idx)
+                    tag_history[nt_idx].append(nt_tag_type)
+                elif nt_str in tagEndList:
+                    nt_tag_type = nt_str[1:-2]
+                    assert nt_tag_type == tag_history[nt_idx][-1]
+                    tag_history[nt_idx].pop(-1)
             if step > 0:
                 scores[:, :step] = torch.index_select(
                     scores[:, :step], dim=0, index=active_bbsz_idx
