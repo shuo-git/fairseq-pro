@@ -256,6 +256,7 @@ class SequenceGenerator(nn.Module):
         if scd:
             tag_possible = []
             tag_history = []
+            tag_exist = []
 
         def reorder_list(ipt_list, ipt_order):
             res_list = []
@@ -269,6 +270,10 @@ class SequenceGenerator(nn.Module):
                 for tag_iter in tagTypeList:
                     if self.tgt_dict.index(f"<{tag_iter}>") in open_tag[temp_idx].tolist():
                         tag_possible[-1].append(tag_iter)
+                if len(tag_possible[-1]) == 0:
+                    tag_exist.append(False)
+                else:
+                    tag_exist.append(True)
         tokens[:, 0] = self.eos if bos_token is None else bos_token
         attn: Optional[Tensor] = None
 
@@ -333,6 +338,7 @@ class SequenceGenerator(nn.Module):
                 my_num_sen = lprobs.shape[0]
                 assert len(tag_possible) == my_num_sen
                 assert len(tag_history) == my_num_sen
+                assert len(tag_exist) == my_num_sen
                 for my_idx in range(my_num_sen):
                     for tag_iter in tagTypeList:
                         if tag_iter not in tag_possible[my_idx]:
@@ -342,7 +348,8 @@ class SequenceGenerator(nn.Module):
                             temp_id = self.tgt_dict.index(f"</{tag_iter}>")
                             lprobs[my_idx][temp_id] = -math.inf
                         if len(tag_possible[my_idx]) > 0 or len(tag_history[my_idx]) > 0:
-                            lprobs[my_idx][self.eos] = -math.inf
+                            if tag_exist[my_idx]:
+                                lprobs[my_idx][self.eos] = -math.inf
 
 
             # handle max length constraint
@@ -466,13 +473,16 @@ class SequenceGenerator(nn.Module):
                 if scd:
                     new_tag_possible = []
                     new_tag_history = []
+                    new_tag_exist = []
                     for temp_idx in batch_idxs.tolist():
                         temp_start = temp_idx * bsz
                         temp_end = (temp_idx + 1) * bsz
                         new_tag_possible.extend(tag_possible[temp_start:temp_end])
                         new_tag_history.extend(tag_history[temp_start:temp_end])
+                        new_tag_exist.extend[tag_exist[temp_start:temp_end]]
                     tag_possible = new_tag_possible
                     tag_history = new_tag_history
+                    tag_exist = new_tag_exist
                 if attn is not None:
                     attn = attn.view(bsz, -1)[batch_idxs].view(
                         new_bsz * beam_size, attn.size(1), -1
@@ -526,6 +536,7 @@ class SequenceGenerator(nn.Module):
             if scd:
                 tag_possible = reorder_list(tag_possible, active_bbsz_idx.tolist())
                 tag_history = reorder_list(tag_history, active_bbsz_idx.tolist())
+                tag_exist = reorder_list(tag_exist, active_bbsz_idx.tolist())
             # Select the next token for each of them
             temp_next_token = torch.gather(cand_indices, dim=1, index=active_hypos)
             tokens.view(bsz, beam_size, -1)[:, :, step + 1] = temp_next_token
