@@ -364,12 +364,12 @@ class LanguagePairDataset(FairseqDataset):
     def num_tokens(self, index):
         """Return the number of tokens in a sample. This value is used to
         enforce ``--max-tokens`` during batching."""
-        if self.dataset_offsets is not None:
-            cur_src_size = max(self.src_sizes[index] - self.dataset_offsets[0], 1)
-            cur_tgt_size = max(self.tgt_sizes[index] - self.dataset_offsets[1], 1)
-            return max(cur_src_size, cur_tgt_size)
-        else:
-            return max(self.src_sizes[index], self.tgt_sizes[index] if self.tgt_sizes is not None else 0)
+        # if self.dataset_offsets is not None:
+        #     cur_src_size = max(self.src_sizes[index] - self.dataset_offsets[0], 1)
+        #     cur_tgt_size = max(self.tgt_sizes[index] - self.dataset_offsets[1], 1)
+        #     return max(cur_src_size, cur_tgt_size)
+        # else:
+        return max(self.src_sizes[index], self.tgt_sizes[index] if self.tgt_sizes is not None else 0)
 
     def size(self, index):
         """Return an example's size as a float or tuple. This value is used when
