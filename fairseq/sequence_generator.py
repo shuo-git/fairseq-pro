@@ -336,10 +336,10 @@ class SequenceGenerator(nn.Module):
                 for my_idx in range(my_num_sen):
                     for tag_iter in tagTypeList:
                         if tag_iter not in tag_possible[my_idx]:
-                            temp_id = self.tgtdict.index(f"<{tag_iter}>")
+                            temp_id = self.tgt_dict.index(f"<{tag_iter}>")
                             lprobs[my_idx][temp_id] = -math.inf
                         if len(tag_history[my_idx]) == 0 or tag_iter != tag_history[my_idx][-1]:
-                            temp_id = self.tgtdict.index(f"</{tag_iter}>")
+                            temp_id = self.tgt_dict.index(f"</{tag_iter}>")
                             lprobs[my_idx][temp_id] = -math.inf
                         if len(tag_possible[my_idx]) > 0 or len(tag_history[my_idx]) > 0:
                             lprobs[my_idx][self.eos] = -math.inf
@@ -531,7 +531,7 @@ class SequenceGenerator(nn.Module):
             tokens.view(bsz, beam_size, -1)[:, :, step + 1] = temp_next_token
             if scd:
                 for nt_idx, nt in enumerate(temp_next_token.view(bsz * beam_size).tolist()):
-                    nt_str = self.tgtdict[nt]
+                    nt_str = self.tgt_dict[nt]
                     if nt_str in tagBegList:
                         nt_tag_type = nt_str[1:-1]
                         assert nt_tag_type in tag_possible[nt_idx]
