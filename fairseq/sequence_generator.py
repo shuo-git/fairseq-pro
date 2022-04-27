@@ -13,6 +13,7 @@ from fairseq.data import data_utils
 from fairseq.models import FairseqIncrementalDecoder
 from fairseq.models.fairseq_encoder import EncoderOut
 from torch import Tensor
+import copy
 
 
 class SequenceGenerator(nn.Module):
@@ -251,6 +252,7 @@ class SequenceGenerator(nn.Module):
         tagTypeList = ['ph', 'xref', 'uicontrol', 'b', 'codeph', 'parmname', 'i', 'title',
                 'menucascade', 'varname', 'userinput', 'filepath', 'term',
                 'systemoutput', 'cite', 'li', 'ul', 'p', 'note', 'indexterm', 'u', 'fn']
+        # tagTypeList = ['ph']
         tagBegList = ['<'+t+'>' for t in tagTypeList]
         tagEndList = ['</'+t+'>' for t in tagTypeList]
         if scd:
@@ -261,7 +263,7 @@ class SequenceGenerator(nn.Module):
         def reorder_list(ipt_list, ipt_order):
             res_list = []
             for _i in ipt_order:
-                res_list.append(ipt_list[_i])
+                res_list.append(copy.deepcopy(ipt_list[_i]))
             return res_list
         if scd:
             for temp_idx in range(bsz * beam_size):
@@ -356,6 +358,7 @@ class SequenceGenerator(nn.Module):
             if step >= max_len:
                 lprobs[:, : self.eos] = -math.inf
                 lprobs[:, self.eos + 1 :] = -math.inf
+                lprobs[:, self.eos] = 0.
 
             # handle prefix tokens (possibly with different lengths)
             if (
@@ -550,7 +553,7 @@ class SequenceGenerator(nn.Module):
                         tag_possible[nt_idx].pop(nt_tag_idx)
                         tag_history[nt_idx].append(nt_tag_type)
                     elif nt_str in tagEndList:
-                        nt_tag_type = nt_str[1:-2]
+                        nt_tag_type = nt_str[2:-1]
                         assert nt_tag_type == tag_history[nt_idx][-1]
                         tag_history[nt_idx].pop(-1)
             if step > 0:

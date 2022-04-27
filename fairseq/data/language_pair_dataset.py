@@ -317,14 +317,14 @@ class LanguagePairDataset(FairseqDataset):
             pad = self.src_dict.pad()
             if sep_idx_2 > sep_idx_1 + 1:
                 open_tag = src_item[sep_idx_1 + 1: sep_idx_2]
-                close_tag = src_item[sep_idx_2 + 1:]
+                close_tag = src_item[sep_idx_2 + 1:-1]
                 assert open_tag.shape[0] == close_tag.shape[0]
                 open_tag = torch.cat([torch.LongTensor([pad]), open_tag])
                 close_tag = torch.cat([torch.LongTensor([pad]), close_tag])
             else:
                 open_tag = torch.LongTensor([pad])
                 close_tag = torch.LongTensor([pad])
-            src_item = src_item[: sep_idx_1]
+            src_item = torch.cat([src_item[: sep_idx_1], torch.LongTensor([self.src_dict.eos()])])
         else:
             open_tag = None
             close_tag = None
