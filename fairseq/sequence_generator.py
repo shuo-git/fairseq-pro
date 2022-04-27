@@ -180,8 +180,8 @@ class SequenceGenerator(nn.Module):
             ],
         )
         net_input = sample["net_input"]
-        if sample[0].get('open_tag', None) is not None:
-            assert sample[0].get('close_tag', None) is not None
+        if sample.get('open_tag', None) is not None:
+            assert sample.get('close_tag', None) is not None
             open_tag = sample['open_tag']
             close_tag = sample['close_tag']
             scd = True
