@@ -475,8 +475,8 @@ class SequenceGenerator(nn.Module):
                     new_tag_history = []
                     new_tag_exist = []
                     for temp_idx in batch_idxs.tolist():
-                        temp_start = temp_idx * bsz
-                        temp_end = (temp_idx + 1) * bsz
+                        temp_start = temp_idx * beam_size
+                        temp_end = (temp_idx + 1) * beam_size
                         new_tag_possible.extend(tag_possible[temp_start:temp_end])
                         new_tag_history.extend(tag_history[temp_start:temp_end])
                         new_tag_exist.extend(tag_exist[temp_start:temp_end])
