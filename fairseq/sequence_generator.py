@@ -385,7 +385,7 @@ class SequenceGenerator(nn.Module):
             assert num_remaining_sent >= 0
             if num_remaining_sent == 0:
                 break
-            assert step < max_len
+            assert step <= max_len
 
             # Remove finalized sentences (ones for which {beam_size}
             # finished hypotheses have been generated) from the batch.
