@@ -218,8 +218,12 @@ class TransformerModel(FairseqEncoderDecoderModel):
                 args, tgt_dict, args.decoder_embed_dim, args.decoder_embed_path
             )
 
-        encoder = cls.build_encoder(args, src_dict, encoder_embed_tokens)
-        decoder = cls.build_decoder(args, tgt_dict, decoder_embed_tokens)
+        embed_tokens_2 = cls.build_embedding(
+            args, src_dict, args.encoder_embed_dim, args.encoder_embed_path
+        )
+
+        encoder = cls.build_encoder(args, src_dict, encoder_embed_tokens, embed_tokens_2)
+        decoder = cls.build_decoder(args, tgt_dict, decoder_embed_tokens, embed_tokens_2)
         return cls(args, encoder, decoder)
 
     @classmethod
@@ -236,7 +240,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
 
     @classmethod
     def build_encoder(cls, args, src_dict, embed_tokens):
-        return TransformerEncoder(args, src_dict, embed_tokens)
+        return TransformerEncoder(args, src_dict, embed_tokens, embed_tokens_2)
 
     @classmethod
     def build_decoder(cls, args, tgt_dict, embed_tokens):
@@ -244,6 +248,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
             args,
             tgt_dict,
             embed_tokens,
+            embed_tokens_2,
             no_encoder_attn=getattr(args, "no_cross_attention", False),
         )
 
@@ -304,7 +309,7 @@ class TransformerEncoder(FairseqEncoder):
         embed_tokens (torch.nn.Embedding): input embedding
     """
 
-    def __init__(self, args, dictionary, embed_tokens):
+    def __init__(self, args, dictionary, embed_tokens, embed_tokens_2):
         super().__init__(dictionary)
         self.register_buffer("version", torch.Tensor([3]))
 
@@ -316,6 +321,7 @@ class TransformerEncoder(FairseqEncoder):
         self.max_source_positions = args.max_source_positions
 
         self.embed_tokens = embed_tokens
+        self.embed_tokens = embed_tokens_2
 
         self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
 
@@ -363,7 +369,14 @@ class TransformerEncoder(FairseqEncoder):
 
     def forward_embedding(self, src_tokens):
         # embed tokens and positions
-        x = embed = self.embed_scale * self.embed_tokens(src_tokens)
+        token_mask = torch.logical_and(
+            src_tokens > 3,
+            src_tokens < 65
+        )
+        token_mask = torch.unsqueeze(token_mask, dim=-1)
+        mixed_embed = self.embed_tokens(src_tokens) * (1 - token_mask)
+                    + self.embed_tokens_2(src_tokens) * token_mask
+        x = embed = self.embed_scale * mixed_embed
         if self.embed_positions is not None:
             x = embed + self.embed_positions(src_tokens)
         if self.layernorm_embedding is not None:
@@ -525,7 +538,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             (default: False).
     """
 
-    def __init__(self, args, dictionary, embed_tokens, no_encoder_attn=False):
+    def __init__(self, args, dictionary, embed_tokens, embed_tokens_2, no_encoder_attn=False):
         self.args = args
         super().__init__(dictionary)
         self.register_buffer("version", torch.Tensor([3]))
@@ -544,6 +557,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         self.max_target_positions = args.max_target_positions
 
         self.embed_tokens = embed_tokens
+        self.embed_tokens_2 = embed_tokens_2
 
         self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
 
@@ -631,6 +645,12 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             nn.init.normal_(
                 self.output_projection.weight, mean=0, std=self.output_embed_dim ** -0.5
             )
+        self.output_projection_2 = nn.Linear(
+            self.embed_tokens_2.weight.shape[1],
+            self.embed_tokens_2.weight.shape[0],
+            bias=False,
+        )
+        self.output_projection_2.weight = self.embed_tokens_2.weight
 
     def build_decoder_layer(self, args, no_encoder_attn=False):
         return TransformerDecoderLayer(args, no_encoder_attn)
@@ -743,7 +763,14 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                 positions = positions[:, -1:]
 
         # embed tokens and positions
-        x = self.embed_scale * self.embed_tokens(prev_output_tokens)
+        token_mask = torch.logical_and(
+            prev_output_tokens > 3,
+            prev_output_tokens < 65
+        )
+        token_mask = torch.unsqueeze(token_mask, dim=-1)
+        mixed_embed = self.embed_tokens(prev_output_tokens) * (1 - token_mask)
+                    + self.embed_tokens_2(prev_output_tokens) * token_mask
+        x = self.embed_scale * mixed_embed
 
         if self.quant_noise is not None:
             x = self.quant_noise(x)
@@ -811,7 +838,11 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         """Project features to the vocabulary size."""
         if self.adaptive_softmax is None:
             # project back to size of vocabulary
-            return self.output_projection(features)
+            logits = self.output_projection(features)       # B x T x V
+            logits_2 = self.output_projection_2(features)   # B x T x V
+            vocab_mask = [1. if idx > 3 and idx < 65 else 0. for idx in range(self.embed_tokens.weight.shape[0])]
+            vocab_mask = torch.unsqueeze(torch.unsqueeze(torch.Tensor(vocab_mask), dim=0), dim=0)   # 1 x 1 x V
+            return logits_2 * vocab_mask + logits * (1 - vocab_mask)
         else:
             return features
 
