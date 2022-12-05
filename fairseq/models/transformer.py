@@ -371,7 +371,7 @@ class TransformerEncoder(FairseqEncoder):
         # embed tokens and positions
         token_mask = torch.logical_and(
             src_tokens > 3,
-            src_tokens < 65
+            src_tokens < 36
         )
         token_mask = torch.unsqueeze(token_mask, dim=-1)
         mixed_embed = self.embed_tokens(src_tokens) * (1 - token_mask)
@@ -765,7 +765,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         # embed tokens and positions
         token_mask = torch.logical_and(
             prev_output_tokens > 3,
-            prev_output_tokens < 65
+            prev_output_tokens < 36
         )
         token_mask = torch.unsqueeze(token_mask, dim=-1)
         mixed_embed = self.embed_tokens(prev_output_tokens) * (1 - token_mask)
@@ -840,7 +840,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             # project back to size of vocabulary
             logits = self.output_projection(features)       # B x T x V
             logits_2 = self.output_projection_2(features)   # B x T x V
-            vocab_mask = [1. if idx > 3 and idx < 65 else 0. for idx in range(self.embed_tokens.weight.shape[0])]
+            vocab_mask = [1. if idx > 3 and idx < 36 else 0. for idx in range(self.embed_tokens.weight.shape[0])]
             vocab_mask = torch.unsqueeze(torch.unsqueeze(torch.Tensor(vocab_mask), dim=0), dim=0)   # 1 x 1 x V
             return logits_2 * vocab_mask + logits * (1 - vocab_mask)
         else:
