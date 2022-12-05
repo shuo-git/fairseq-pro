@@ -374,8 +374,7 @@ class TransformerEncoder(FairseqEncoder):
             src_tokens < 36
         )
         token_mask = torch.unsqueeze(token_mask, dim=-1)
-        mixed_embed = self.embed_tokens(src_tokens) * (1 - token_mask)
-                    + self.embed_tokens_2(src_tokens) * token_mask
+        mixed_embed = self.embed_tokens(src_tokens) * (1 - token_mask) + self.embed_tokens_2(src_tokens) * token_mask
         x = embed = self.embed_scale * mixed_embed
         if self.embed_positions is not None:
             x = embed + self.embed_positions(src_tokens)
