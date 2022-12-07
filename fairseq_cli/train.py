@@ -67,6 +67,14 @@ def main(args):
     # Build model and criterion
     model = task.build_model(args)
     criterion = task.build_criterion(args)
+    for p in model.parameters():
+        p.requires_grad = False
+    for p in model.encoder.embed_tokens_2.parameters():
+        p.requires_grad = True
+    for p in model.decoder.embed_tokens_2.parameters():
+        p.requires_grad = True
+    for p in model.decoder.output_projection_2.parameters():
+        p.requires_grad = True
     logger.info(model)
     logger.info("task: {} ({})".format(args.task, task.__class__.__name__))
     logger.info("model: {} ({})".format(args.arch, model.__class__.__name__))
