@@ -321,7 +321,7 @@ class TransformerEncoder(FairseqEncoder):
         self.max_source_positions = args.max_source_positions
 
         self.embed_tokens = embed_tokens
-        self.embed_tokens = embed_tokens_2
+        self.embed_tokens_2 = embed_tokens_2
 
         self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
 
