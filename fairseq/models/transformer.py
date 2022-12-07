@@ -841,6 +841,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             logits_2 = self.output_projection_2(features)   # B x T x V
             vocab_mask = [1. if idx > 3 and idx < 36 else 0. for idx in range(self.embed_tokens.weight.shape[0])]
             vocab_mask = torch.unsqueeze(torch.unsqueeze(torch.Tensor(vocab_mask), dim=0), dim=0)   # 1 x 1 x V
+            vocab_mask = vocab_mask.to(logits.device)
             return logits_2 * vocab_mask + logits * (1 - vocab_mask)
         else:
             return features
